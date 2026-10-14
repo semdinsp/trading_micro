@@ -1,0 +1,129 @@
+/* See the Tailwind configuration guide for advanced usage
+   https://tailwindcss.com/docs/configuration */
+
+@import "tailwindcss" source(none);
+/* Display face for headings/wordmarks, monospace for all numerics & data feed text */
+@import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+@import "phoenix-colocated/trading_micro/colocated.css";
+@source "../css";
+@source "../js";
+@source "../../lib/trading_micro_web";
+/* Required for Tailwind to automatically pick up changes in colocated CSS files in dev */
+@source "../../_build/dev/phoenix-colocated/trading_micro/*/";
+
+/* A Tailwind plugin that makes "hero-#{ICON}" classes available.
+   The heroicons installation itself is managed by your mix.exs */
+@plugin "../vendor/heroicons";
+
+/* daisyUI Tailwind Plugin. */
+@plugin "daisyui/packages/bundle/daisyui" {
+  themes: false;
+}
+
+/*
+ * "Dark Pool" — the only theme, shared with trading_dashboard. A trading-desk
+ * terminal aesthetic: near-black charcoal base, signal amber for primary
+ * actions/focus, cyan for informational accents. See DESIGN.md. Token values
+ * are copied verbatim from trading_dashboard's app.css; keep them in step.
+ */
+@plugin "daisyui/packages/bundle/daisyui-theme" {
+  name: "dark_pool";
+  default: true;
+  prefersdark: true;
+  color-scheme: "dark";
+  --color-base-100: oklch(15% 0.008 260);
+  --color-base-200: oklch(12% 0.008 260);
+  --color-base-300: oklch(9% 0.007 260);
+  --color-base-content: oklch(92% 0.01 95);
+  --color-primary: oklch(78% 0.16 75);
+  --color-primary-content: oklch(15% 0.02 75);
+  --color-secondary: oklch(72% 0.13 215);
+  --color-secondary-content: oklch(14% 0.02 215);
+  --color-accent: oklch(72% 0.13 215);
+  --color-accent-content: oklch(14% 0.02 215);
+  --color-neutral: oklch(28% 0.01 260);
+  --color-neutral-content: oklch(90% 0.01 95);
+  --color-info: oklch(72% 0.13 215);
+  --color-info-content: oklch(14% 0.02 215);
+  --color-success: oklch(72% 0.17 150);
+  --color-success-content: oklch(14% 0.03 150);
+  --color-warning: oklch(78% 0.16 75);
+  --color-warning-content: oklch(15% 0.02 75);
+  --color-error: oklch(63% 0.21 25);
+  --color-error-content: oklch(96% 0.02 25);
+  --radius-selector: 0.125rem;
+  --radius-field: 0.125rem;
+  --radius-box: 0.25rem;
+  --size-selector: 0.21875rem;
+  --size-field: 0.21875rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Add variants based on LiveView classes */
+@custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
+@custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
+@custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
+
+/* Make LiveView wrapper divs transparent for layout */
+[data-phx-session], [data-phx-teleported-src] { display: contents }
+
+/* ============================================================
+   Dark Pool design tokens — see DESIGN.md
+   ============================================================ */
+
+:root {
+  --font-display: "Oswald", "Arial Narrow", sans-serif;
+  --font-data: "JetBrains Mono", "SF Mono", monospace;
+
+  /* Direction of flow, distinct from gain/loss success/error. Here: buy vs
+     sell volume and positive vs negative OFI. */
+  --color-long: oklch(72% 0.17 150);
+  --color-short: oklch(68% 0.19 25);
+}
+
+body {
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
+  background-image:
+    linear-gradient(transparent 95%, oklch(100% 0 0 / 0.025) 95%),
+    linear-gradient(90deg, transparent 95%, oklch(100% 0 0 / 0.025) 95%);
+  background-size: 24px 24px;
+  background-attachment: fixed;
+}
+
+.font-data,
+.tabular-data,
+table.data-table {
+  font-family: var(--font-data);
+}
+
+/* Ticking dot used for live/streaming connection states */
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  100% { box-shadow: 0 0 0 6px transparent; opacity: 0; }
+}
+
+.signal-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  animation: pulse-ring 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Subtle ingest flash for newly arrived rows in live feeds */
+@keyframes row-flash {
+  0% { background-color: oklch(78% 0.16 75 / 0.18); }
+  100% { background-color: transparent; }
+}
+
+.row-flash {
+  animation: row-flash 1.2s ease-out;
+}
+
+.text-long { color: var(--color-long); }
+.text-short { color: var(--color-short); }
+.bg-long { background-color: var(--color-long); }
+.bg-short { background-color: var(--color-short); }
