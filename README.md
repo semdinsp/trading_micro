@@ -49,7 +49,7 @@ Older tailwind versions can't resolve Phoenix 1.8.13's package imports.
 | `TradingMicro.HubSubscription` | Connects to the hub node and subscribes each symbol on `TradingHub.Polygon.WebSocketClient` under the caller tag `trading_micro:recorder`. It re-subscribes on `nodeup` and on the hub's `:resubscribe`, marks Polygon rejections, and checks every 30s that the hub still lists each symbol. |
 | `TradingMicro.Recorder.Worker` | One per symbol. It listens on `TradingContract.Topics.prices_polygon/1`, dispatches on `metadata.data_type`, and writes closed seconds every 5s. |
 | `TradingMicro.Recorder.SymbolState` | A pure fold that turns messages into per-second rows, with lateness, session window and gap tracking. |
-| `TradingMicro.Microstructure` | Per-event OFI and Lee–Ready trade side. These mirror `TradingCore.Signal.Compute`'s `:ofi` and `:signed_volume`, and a test checks the two agree. |
+| `TradingMicro.Microstructure` | Per-event OFI and Lee–Ready trade side via `TradingCore.Microstructure` (the functions `Signal.Compute` uses), with the recorder's `nil_size: :skip` and `empty_side: :skip` options pinned. |
 | `TradingMicro.Session` | The 04:00–20:00 ET recording window and the RTH flag (via `TradingCore.Intraday.RegularSession`, so it handles holidays and half days). |
 
 Symbols are set in `config :trading_micro, :symbols`; adding one is a

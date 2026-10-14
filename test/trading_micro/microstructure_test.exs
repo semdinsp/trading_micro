@@ -86,8 +86,7 @@ defmodule TradingMicro.MicrostructureTest do
   end
 
   describe "a zero price is Polygon's empty side, not a price" do
-    test "no mid, no raw mid" do
-      assert Microstructure.mid(q("0", 0, "100.02", 500)) == nil
+    test "no stored mid" do
       assert Microstructure.raw_mid(d(0), d("100.02")) == nil
     end
 
@@ -101,18 +100,17 @@ defmodule TradingMicro.MicrostructureTest do
     end
   end
 
-  describe "mid/1 and raw_mid/2" do
-    test "mid needs ask > bid; raw_mid only needs both sides" do
-      assert Microstructure.mid(base()) == d("100.01")
-      assert Microstructure.mid(q("100.01", 1, "100.01", 1)) == nil
+  describe "raw_mid/2" do
+    test "needs both sides positive, even locked or crossed" do
       assert Microstructure.raw_mid(d("100.01"), d("100.01")) == d("100.01")
       assert Microstructure.raw_mid(nil, d("100.01")) == nil
     end
   end
 
-  # The point of these: the recorder must agree with the same feature
-  # computed by trading_core everywhere else in the workspace. Any drift in
-  # either implementation fails here.
+  # Both sides now call TradingCore.Microstructure; these pin that the
+  # recorder's stricter options change nothing on clean data (positive
+  # prices, every size present), so recorded seconds sum to what Compute
+  # emits for the same ticks.
   describe "parity with TradingCore.Signal.Compute" do
     @start ~U[2026-10-13 14:00:00Z]
 
