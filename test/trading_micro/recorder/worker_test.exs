@@ -115,7 +115,8 @@ defmodule TradingMicro.Recorder.WorkerTest do
     pid = start_worker(clock)
     broadcast(hub_quote("TST", DateTime.add(@t0, 500, :millisecond), "100.00", "100.02"))
 
-    set_clock(clock, DateTime.add(@t0, 1))
+    # Still inside the quote's own second: it must be written anyway.
+    set_clock(clock, DateTime.add(@t0, 600, :millisecond))
     # Sync point: the broadcast is handled before stop is.
     Worker.stats(pid)
     stop_supervised!(Worker)

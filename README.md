@@ -49,6 +49,8 @@ to switch the recorder off.
 - Rows are bucketed by Polygon's SIP timestamp, not arrival time. A second closes 2s after it ends. A later message for that second is counted in `late_dropped` and not recorded.
 - A second with no messages has no row. Nothing is forward-filled: a second with trades but no quotes has `nil` bid/ask.
 - `ofi` is Cont–Kukanov–Stoikov, and **positive means buying pressure**. An update with a `nil` size isn't scored, and if no update in a second can be scored, `ofi` is `nil`, not 0.
+- After a break of more than 5s in SIP time (overnight, or a hub outage), the next quote's OFI and the next trade's side do not reference the data from before the break. A whole book change is never booked as one second's flow.
+- A zero bid or ask is Polygon's empty side. It is treated as no price: no mid, no OFI, and trades fall back to the tick rule.
 - Trades are signed by Lee–Ready against the quote prevailing when the trade arrives, with the tick rule used at the mid. Volume that can't be signed goes to `unknown_volume`. Prints the hub flags `updates_volume: false` are skipped.
 - **Units:** sizes are stored exactly as Polygon sends them. Check whether Polygon's `bs`/`as` are shares or round lots before you compare `ofi` with trade volume.
 - A quote gap of more than 60s during RTH is logged at error level once when it opens and once when it closes, and it shows on `/health` and the dashboard.

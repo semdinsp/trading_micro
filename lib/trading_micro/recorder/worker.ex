@@ -20,7 +20,8 @@ defmodule TradingMicro.Recorder.Worker do
   dropped oldest first and logged. A gap in RTH quotes is logged at error
   level when it opens and again when it closes.
 
-  On shutdown every open second is written, settled or not.
+  On shutdown every open second is written, settled or not, including the
+  current one.
   """
 
   use GenServer
@@ -38,7 +39,9 @@ defmodule TradingMicro.Recorder.Worker do
   def child_spec(opts) do
     %{
       id: {__MODULE__, Keyword.fetch!(opts, :symbol)},
-      start: {__MODULE__, :start_link, [opts]}
+      start: {__MODULE__, :start_link, [opts]},
+      # Room for terminate/2's final write to outlast a slow DB checkout.
+      shutdown: 20_000
     }
   end
 
@@ -57,8 +60,10 @@ defmodule TradingMicro.Recorder.Worker do
 
   # app_status polls from its own application, which can start before this
   # app's Registry exists; a missing registry raises rather than exits.
+  # Short timeout: a worker blocked in a slow insert must not stall the
+  # dashboard or /health; they show "no stats" instead.
   def stats(server) do
-    GenServer.call(server, :stats)
+    GenServer.call(server, :stats, 1_000)
   rescue
     ArgumentError -> nil
   catch
@@ -136,7 +141,8 @@ defmodule TradingMicro.Recorder.Worker do
 
   @impl true
   def terminate(_reason, state) do
-    do_flush(state, 0)
+    {rows, fold} = SymbolState.close_all(state.fold, state.clock.())
+    write(%{state | fold: fold, pending: state.pending ++ rows}, state.clock.())
     :ok
   end
 

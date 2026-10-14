@@ -85,6 +85,22 @@ defmodule TradingMicro.MicrostructureTest do
     end
   end
 
+  describe "a zero price is Polygon's empty side, not a price" do
+    test "no mid, no raw mid" do
+      assert Microstructure.mid(q("0", 0, "100.02", 500)) == nil
+      assert Microstructure.raw_mid(d(0), d("100.02")) == nil
+    end
+
+    test "Lee–Ready falls back to the tick rule" do
+      assert Microstructure.trade_side(d("100.01"), q("0", 0, "100.02", 5), d("100.02"), nil) ==
+               :sell
+    end
+
+    test "OFI is unscored" do
+      assert Microstructure.ofi_contribution(q("0", 0, "100.02", 5), base()) == nil
+    end
+  end
+
   describe "mid/1 and raw_mid/2" do
     test "mid needs ask > bid; raw_mid only needs both sides" do
       assert Microstructure.mid(base()) == d("100.01")

@@ -11,7 +11,8 @@ defmodule TradingMicro.Microstructure do
   folds the same ticks through Compute and asserts the totals match, which
   turns any drift between the two into a failing test.
 
-  One deliberate difference: Compute treats a `nil` quote size as 0. Here
+  Deliberate differences: a zero price (Polygon's empty side) is treated
+  as missing, and Compute treats a `nil` quote size as 0. Here
   a `nil` size makes the update unscorable (`nil`), because the recorder's
   contract is that `nil` means unknown, not zero, and a fabricated 0 would
   read as a real pull of the whole level.
@@ -60,7 +61,7 @@ defmodule TradingMicro.Microstructure do
   end
 
   defp complete?(%{bid: b, ask: a, bid_size: bs, ask_size: as}),
-    do: not (is_nil(b) or is_nil(a) or is_nil(bs) or is_nil(as))
+    do: positive?(b) and positive?(a) and not (is_nil(bs) or is_nil(as))
 
   defp complete?(_), do: false
 
@@ -110,20 +111,25 @@ defmodule TradingMicro.Microstructure do
   end
 
   @doc """
-  Midpoint of a usable quote: both sides present and `ask > bid`. `nil`
-  for a missing side or a locked or crossed book.
+  Midpoint of a usable quote: both sides positive and `ask > bid`. `nil`
+  for a missing or zero side, or a locked or crossed book.
   """
   @spec mid(quote_t() | nil) :: Decimal.t() | nil
   def mid(%{bid: %Decimal{} = bid, ask: %Decimal{} = ask}) do
-    if Decimal.compare(ask, bid) == :gt do
+    if positive?(bid) and Decimal.compare(ask, bid) == :gt do
       bid |> Decimal.add(ask) |> Decimal.div(2)
     end
   end
 
   def mid(_), do: nil
 
-  @doc "Midpoint whenever both sides are present, even locked or crossed."
+  @doc "Midpoint whenever both sides are positive, even locked or crossed."
   @spec raw_mid(Decimal.t() | nil, Decimal.t() | nil) :: Decimal.t() | nil
-  def raw_mid(%Decimal{} = bid, %Decimal{} = ask), do: bid |> Decimal.add(ask) |> Decimal.div(2)
-  def raw_mid(_bid, _ask), do: nil
+  def raw_mid(bid, ask) do
+    if positive?(bid) and positive?(ask), do: bid |> Decimal.add(ask) |> Decimal.div(2)
+  end
+
+  # Polygon sends 0 for an empty side ("bp": 0); that is no price, not a price of 0.
+  defp positive?(%Decimal{} = d), do: Decimal.compare(d, 0) == :gt
+  defp positive?(_), do: false
 end

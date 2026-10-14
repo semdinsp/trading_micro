@@ -35,10 +35,19 @@ defmodule TradingMicro.Recorder.SymbolState do
 
   @zero Decimal.new(0)
 
+  # A previous quote or trade older than this (by SIP time) is not a usable
+  # reference: differencing against it would book a whole overnight or
+  # outage book change as one second's OFI, and tick-rule against a stale
+  # price. Liquid ETFs quote many times a second, so 5s of silence is a
+  # break, not a pause.
+  @reference_max_age_ms 5_000
+
   defstruct [
     :symbol,
     :quote,
+    :quote_ts,
     :last_trade_price,
+    :last_trade_ts,
     :last_side,
     :closed_through,
     :last_quote_at,
@@ -74,11 +83,12 @@ defmodule TradingMicro.Recorder.SymbolState do
       ask_size: Map.get(data, :ask_size)
     }
 
-    ofi = Microstructure.ofi_contribution(state.quote, quote)
+    ofi = Microstructure.ofi_contribution(fresh(state.quote, state.quote_ts, ts), quote)
 
     state = %{
       state
       | quote: quote,
+        quote_ts: ts,
         quotes_seen: state.quotes_seen + 1,
         last_message_at: received_at
     }
@@ -113,14 +123,22 @@ defmodule TradingMicro.Recorder.SymbolState do
     if Map.get(data, :updates_volume, true) == false do
       state
     else
+      last_price = fresh(state.last_trade_price, state.last_trade_ts, ts)
+
       side =
-        Microstructure.trade_side(price, state.quote, state.last_trade_price, state.last_side)
+        Microstructure.trade_side(
+          price,
+          fresh(state.quote, state.quote_ts, ts),
+          last_price,
+          last_price && state.last_side
+        )
 
       size = Map.get(data, :size)
 
       state = %{
         state
         | last_trade_price: price,
+          last_trade_ts: ts,
           last_side: if(side == :unknown, do: state.last_side, else: side),
           trades_seen: state.trades_seen + 1,
           last_message_at: received_at
@@ -165,6 +183,21 @@ defmodule TradingMicro.Recorder.SymbolState do
   end
 
   @doc """
+  Closes every open second regardless of settle or clock, for shutdown:
+  nothing received is left unwritten.
+  """
+  @spec close_all(t(), DateTime.t()) :: {[map()], t()}
+  def close_all(state, %DateTime{} = now) do
+    # close/3 with settle 0 closes seconds before `at`'s second, so pick a
+    # second past both now and the newest bucket (which can be ahead of the
+    # local clock).
+    newest = state.buckets |> Map.keys() |> Enum.max(fn -> 0 end)
+    at = max(newest, DateTime.to_unix(now)) + 1
+    {rows, state} = close(state, DateTime.from_unix!(at), 0)
+    {rows, %{state | days: prune_days(state.days, now)}}
+  end
+
+  @doc """
   Updates gap tracking at `now`. Returns `{event, state}` where `event` is
   `{:gap_opened, silent_seconds}`, `{:gap_closed, gap_seconds}` or `:none`.
   """
@@ -190,6 +223,13 @@ defmodule TradingMicro.Recorder.SymbolState do
   @doc "Whether a gap is currently open."
   @spec gap_open?(t()) :: boolean()
   def gap_open?(state), do: not is_nil(state.gap_since)
+
+  # The reference value when it is recent enough to difference against.
+  defp fresh(_value, nil, _ts), do: nil
+
+  defp fresh(value, %DateTime{} = at, %DateTime{} = ts) do
+    if abs(DateTime.diff(ts, at, :millisecond)) <= @reference_max_age_ms, do: value
+  end
 
   # -- buckets ---------------------------------------------------------------
 

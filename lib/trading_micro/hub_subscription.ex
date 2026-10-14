@@ -45,6 +45,12 @@ defmodule TradingMicro.HubSubscription do
   @verify_ms 30_000
 
   @doc false
+  def child_spec(opts) do
+    # terminate/2 unsubscribes over :erpc (10s timeout per call).
+    %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}, shutdown: 25_000}
+  end
+
+  @doc false
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
   end
@@ -76,6 +82,7 @@ defmodule TradingMicro.HubSubscription do
       rpc: Keyword.get(opts, :rpc, &default_rpc/3),
       connect: Keyword.get(opts, :connect, &Node.connect/1),
       connected?: false,
+      verify_ref: nil,
       symbols: Map.new(symbols, &{&1, %{state: :pending, listed?: nil}})
     }
 
@@ -92,8 +99,7 @@ defmodule TradingMicro.HubSubscription do
   def handle_info(:connect, state) do
     if state.connect.(state.hub_node) == true do
       Logger.info("HubSubscription: connected to #{state.hub_node}")
-      send(self(), :verify)
-      {:noreply, subscribe_all(%{state | connected?: true})}
+      {:noreply, state |> schedule_verify(0) |> Map.put(:connected?, true) |> subscribe_all()}
     else
       Process.send_after(self(), :connect, @retry_ms)
       {:noreply, %{state | connected?: false}}
@@ -101,7 +107,7 @@ defmodule TradingMicro.HubSubscription do
   end
 
   def handle_info(:verify, %{connected?: true} = state) do
-    Process.send_after(self(), :verify, @verify_ms)
+    state = schedule_verify(state, @verify_ms)
 
     case state.rpc.(state.hub_node, :get_subscriptions, []) do
       listed when is_list(listed) ->
@@ -113,7 +119,7 @@ defmodule TradingMicro.HubSubscription do
     end
   end
 
-  def handle_info(:verify, state), do: {:noreply, state}
+  def handle_info(:verify, state), do: {:noreply, %{state | verify_ref: nil}}
 
   def handle_info({:nodeup, node}, %{hub_node: node} = state) do
     Logger.info("HubSubscription: #{node} back up, re-subscribing")
@@ -158,6 +164,13 @@ defmodule TradingMicro.HubSubscription do
   end
 
   def terminate(_reason, _state), do: :ok
+
+  # Exactly one verify loop: a hub that flaps and reconnects within one
+  # interval must not start a second loop alongside the first.
+  defp schedule_verify(state, delay) do
+    if state.verify_ref, do: Process.cancel_timer(state.verify_ref)
+    %{state | verify_ref: Process.send_after(self(), :verify, delay)}
+  end
 
   defp subscribe_all(state) do
     Enum.reduce(Map.keys(state.symbols), state, fn symbol, acc ->

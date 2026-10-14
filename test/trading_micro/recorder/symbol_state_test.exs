@@ -118,6 +118,37 @@ defmodule TradingMicro.Recorder.SymbolStateTest do
     end
   end
 
+  describe "stale references across a break" do
+    test "OFI does not difference against a quote older than 5s" do
+      {[_, row], _} =
+        [
+          {:q, quote(0, "100.00", 500, "100.02", 500)},
+          {:q, quote(10_000, "101.00", 300, "101.02", 500)}
+        ]
+        |> fold()
+        |> close_all()
+
+      assert row.ofi == nil
+    end
+
+    test "the tick rule ignores a trade older than 5s" do
+      {[_, row], _} =
+        [{:t, trade(0, "100.00")}, {:t, trade(10_000, "100.05")}] |> fold() |> close_all()
+
+      assert Decimal.equal?(row.unknown_volume, d(100))
+      assert Decimal.equal?(row.buy_volume, d(0))
+    end
+
+    test "nor signs a trade against a quote older than 5s" do
+      {[_, row], _} =
+        [{:q, quote(0, "100.00", 500, "100.02", 500)}, {:t, trade(10_000, "100.02")}]
+        |> fold()
+        |> close_all()
+
+      assert Decimal.equal?(row.unknown_volume, d(100))
+    end
+  end
+
   describe "trade signing" do
     test "Lee–Ready against the prevailing quote, tick rule at the mid" do
       {[row], _} =
@@ -210,6 +241,23 @@ defmodule TradingMicro.Recorder.SymbolStateTest do
 
       {[row], _} = SymbolState.close(state, DateTime.add(pre, 60), 0)
       refute row.rth
+    end
+  end
+
+  describe "close_all/2" do
+    test "closes the current, unsettled second too" do
+      state = fold([{:q, quote(500, "100.00", 500, "100.02", 500)}])
+
+      {[row], state} = SymbolState.close_all(state, at(600))
+      assert row.ts == @t0
+      assert state.buckets == %{}
+    end
+
+    test "closes a bucket stamped ahead of the local clock" do
+      state = fold([{:q, quote(3_500, "100.00", 500, "100.02", 500)}])
+
+      assert {[%{ts: ts}], _} = SymbolState.close_all(state, at(100))
+      assert ts == DateTime.add(@t0, 3)
     end
   end
 

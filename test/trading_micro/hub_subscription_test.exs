@@ -80,6 +80,22 @@ defmodule TradingMicro.HubSubscriptionTest do
     end)
   end
 
+  test "a hub flap does not start a second verify loop" do
+    pid = start()
+    assert_receive {:rpc, @hub, :get_subscriptions, []}
+
+    capture_log(fn ->
+      send(pid, {:nodedown, @hub})
+      send(pid, :connect)
+      assert_receive {:rpc, @hub, :get_subscriptions, []}
+    end)
+
+    assert %{verify_ref: ref} = :sys.get_state(pid)
+    assert is_reference(ref)
+    # One pending timer only: the old one was cancelled.
+    refute_receive {:rpc, @hub, :get_subscriptions, []}, 100
+  end
+
   test "re-subscribes on the hub's polygon :resubscribe health broadcast" do
     pid = start()
     assert_receive {:rpc, @hub, :subscribe_symbol, ["QQQ", _]}
