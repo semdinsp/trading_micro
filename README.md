@@ -21,6 +21,18 @@ elixir --name trading_micro@Scotts-Mac-mini.local -S mix phx.server
 - `GET /status`, `/status/metrics`: app_status, with the same recorder metrics as flat gauges.
 - `mix micro.report [YYYY-MM-DD]`: the end-of-session report (rows, RTH quote coverage, median spread in bps, largest RTH gap). It is read-only and safe to run next to the server.
 
+**Inspecting the running node:** use a one-shot RPC, read-only.
+
+```bash
+elixir --name debugger_$$@Scotts-Mac-mini.local --cookie $(cat ~/.erlang.cookie) \
+  --rpc-eval trading_micro@Scotts-Mac-mini.local \
+  'IO.inspect(TradingMicro.Health.snapshot())'
+```
+
+**Never use `--remsh`.** Exiting a remote shell the wrong way halts the
+target node, which kills the live recorder and loses the seconds it hasn't
+written yet.
+
 Port **4020** must also be registered in trading_hub's `cluster_app_ports`
 (see `handoff_prompts/`).
 
