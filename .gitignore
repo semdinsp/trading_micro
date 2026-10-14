@@ -35,3 +35,6 @@ trading_micro-*.tar
 npm-debug.log
 /assets/node_modules/
 
+
+# Dev-mode file-logger output (config/dev.exs :default_handler).
+/log/

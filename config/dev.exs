@@ -61,7 +61,24 @@ config :trading_micro, :hub_node, :"trading_hub@Scotts-Mac-mini.local"
 config :trading_micro, dev_routes: true
 
 # Do not include metadata nor timestamps in development logs
-config :logger, :default_formatter, format: "[$level] $message\n"
+# Timestamped, so lines can be lined up against sibling apps' logs (same
+# shape as trading_system's).
+config :logger, :default_formatter, format: "$time [$level] $message\n"
+
+# Route dev logs to a file instead of the terminal, as trading_system and
+# trading_live do. The filename is unique per app so tailing several
+# siblings' logs at once stays self-identifying; the relative path resolves
+# against this app's cwd (trading_micro/log/). The recorder's RTH gap alarm
+# and hub-subscription errors land here, so this is the file to check after
+# a session. Rotates at 10 MB, keeping 5 files.
+config :logger, :default_handler,
+  config: [
+    file: ~c"log/trading_micro_dev.log",
+    filesync_repeat_interval: 5_000,
+    file_check: 1_000,
+    max_no_bytes: 10_000_000,
+    max_no_files: 5
+  ]
 
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.
