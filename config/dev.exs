@@ -8,7 +8,12 @@ config :trading_micro, TradingMicro.Repo,
   database: "trading_micro_dev",
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
-  pool_size: 10
+  pool_size: 10,
+  # No per-query debug lines. With the dashboard open and app_status
+  # polling, they were the whole log (~50 MB a session), and rotation
+  # deleted the morning before the session ended. Same as trading_live
+  # and trading_system.
+  log: false
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
@@ -63,7 +68,11 @@ config :trading_micro, dev_routes: true
 # Do not include metadata nor timestamps in development logs
 # Timestamped, so lines can be lined up against sibling apps' logs (same
 # shape as trading_system's).
-config :logger, :default_formatter, format: "$time [$level] $message\n"
+# No ANSI colour codes: the handler writes to a file, where they show up as
+# raw escapes in grep and editors.
+config :logger, :default_formatter,
+  format: "$time [$level] $message\n",
+  colors: [enabled: false]
 
 # Route dev logs to a file instead of the terminal, as trading_system and
 # trading_live do. The filename is unique per app so tailing several
