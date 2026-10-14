@@ -14,6 +14,6 @@ defmodule TradingMicroWeb.HealthControllerTest do
 
   test "GET /status is served by app_status", %{conn: conn} do
     body = conn |> get("/status") |> json_response(200)
-    assert body["app"] == "trading_micro" or body["app_name"] == "trading_micro"
+    assert body["app"] == "trading_micro"
   end
 end
