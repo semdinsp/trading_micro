@@ -25,6 +25,11 @@ config :trading_micro, TradingMicroWeb.Endpoint,
 config :trading_micro, TradingMicro.Recorder, enabled: false
 config :trading_micro, :hub_node, nil
 
+# app_status's Collector polls the extension every 5s from its own process,
+# which owns no sandbox connection; it would race the tests for the pool.
+# StatusExtension is tested directly instead.
+config :app_status, extension: nil
+
 # In test we don't send emails
 config :trading_micro, TradingMicro.Mailer, adapter: Swoosh.Adapters.Test
 

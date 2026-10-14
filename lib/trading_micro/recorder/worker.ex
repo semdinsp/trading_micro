@@ -55,8 +55,12 @@ defmodule TradingMicro.Recorder.Worker do
     stats(via(symbol))
   end
 
+  # app_status polls from its own application, which can start before this
+  # app's Registry exists; a missing registry raises rather than exits.
   def stats(server) do
     GenServer.call(server, :stats)
+  rescue
+    ArgumentError -> nil
   catch
     :exit, _ -> nil
   end
