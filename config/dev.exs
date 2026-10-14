@@ -19,7 +19,8 @@ config :trading_micro, TradingMicro.Repo,
 config :trading_micro, TradingMicroWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
-  http: [ip: {127, 0, 0, 1}],
+  # 4020 is this app's slot in trading_hub's "Sibling app ports" registry.
+  http: [ip: {127, 0, 0, 1}, port: 4020],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
@@ -51,6 +52,10 @@ config :trading_micro, TradingMicroWeb.Endpoint,
 # If desired, both `http:` and `https:` keys can be
 # configured to run both http and https servers on
 # different ports.
+
+# The trading_hub node this app subscribes through (Polygon feed) and
+# listens to over :pg. Fully-qualified hostname, same as every sibling.
+config :trading_micro, :hub_node, :"trading_hub@Scotts-Mac-mini.local"
 
 # Enable dev routes for dashboard and mailbox
 config :trading_micro, dev_routes: true

@@ -11,6 +11,33 @@ config :trading_micro,
   ecto_repos: [TradingMicro.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]
 
+# What the recorder records. Adding a symbol is this one line — the
+# recorder subscribes it on trading_hub's Polygon feed at boot.
+config :trading_micro, :symbols, ["SPY", "QQQ"]
+
+# The recorder: per-second aggregation flushed in batches.
+#   flush_interval_ms — how often closed seconds are written.
+#   settle_ms — how long after a second ends before it is closed, so a
+#     late-arriving message (Polygon stamps by SIP time, delivery is
+#     cross-node and unordered across topics) still lands in its second.
+#   gap_alarm_seconds — RTH silence that gets logged at error level.
+config :trading_micro, TradingMicro.Recorder,
+  enabled: true,
+  flush_interval_ms: 5_000,
+  settle_ms: 2_000,
+  gap_alarm_seconds: 60
+
+# Shared /status and /status/metrics endpoints (app_status).
+config :app_status,
+  app_name: :trading_micro,
+  endpoint: TradingMicroWeb.Endpoint,
+  extension: TradingMicro.StatusExtension
+
+# DST-correct ET session math (TradingCore.Intraday.RegularSession) needs
+# a real tz database. Updated via `mix deps.update tzdata`, not polled.
+config :elixir, :time_zone_database, Tzdata.TimeZoneDatabase
+config :tzdata, :autoupdate, :disabled
+
 # Configure the endpoint
 config :trading_micro, TradingMicroWeb.Endpoint,
   url: [host: "localhost"],

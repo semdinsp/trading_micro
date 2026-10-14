@@ -20,8 +20,11 @@ if System.get_env("PHX_SERVER") do
   config :trading_micro, TradingMicroWeb.Endpoint, server: true
 end
 
-config :trading_micro, TradingMicroWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+# Only when PORT is set: an unconditional default here loads after dev.exs
+# and would clobber its registered 4020 (trading_signal hit exactly this).
+if port = System.get_env("PORT") do
+  config :trading_micro, TradingMicroWeb.Endpoint, http: [port: String.to_integer(port)]
+end
 
 if config_env() == :dev do
   # Reload browser tabs when matching files change.

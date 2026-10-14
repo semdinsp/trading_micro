@@ -72,7 +72,14 @@ defmodule TradingMicro.MixProject do
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      {:tzdata, "~> 1.1"},
+      {:app_status, git: "https://github.com/semdinsp/app_status.git", tag: "v0.1.4"},
+      {:trading_contract, git: "https://github.com/semdinsp/trading_contract.git", tag: "v0.1.0"},
+      {:trading_core, path: "../trading_core"},
+      # Same override as trading_system: tzdata's transitive hackney 1.x
+      # carries disclosed CVEs fixed in 4.x. Nothing here calls hackney.
+      {:hackney, "~> 4.7", override: true}
     ]
   end
 

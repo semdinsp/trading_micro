@@ -20,6 +20,11 @@ config :trading_micro, TradingMicroWeb.Endpoint,
   secret_key_base: "g5+xpKSppH0eptPNpvEuMNt1qGQuejtwgDn6rRaXAdJ3z5F3oTe6NS48Xd8oo2iV",
   server: false
 
+# No hub in test: the recorder's processes are started by the tests that
+# need them, against injected clocks and a nil hub node.
+config :trading_micro, TradingMicro.Recorder, enabled: false
+config :trading_micro, :hub_node, nil
+
 # In test we don't send emails
 config :trading_micro, TradingMicro.Mailer, adapter: Swoosh.Adapters.Test
 

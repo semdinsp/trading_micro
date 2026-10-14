@@ -14,16 +14,21 @@ defmodule TradingMicroWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # Liveness + recorder health; trading_hub's /api/cluster-health pings it.
+  scope "/", TradingMicroWeb do
+    pipe_through :api
+
+    get "/health", HealthController, :show
+  end
+
+  # app_status's shared /status and /status/metrics (its own Plug.Router).
+  forward "/status", AppStatus.Plug
+
   scope "/", TradingMicroWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", RecorderLive, :index
   end
-
-  # Other scopes may use custom stacks.
-  # scope "/api", TradingMicroWeb do
-  #   pipe_through :api
-  # end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:trading_micro, :dev_routes) do

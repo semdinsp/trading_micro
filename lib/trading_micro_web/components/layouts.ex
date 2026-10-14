@@ -12,63 +12,88 @@ defmodule TradingMicroWeb.Layouts do
   embed_templates "layouts/*"
 
   @doc """
-  Renders your app layout.
-
-  This function is typically invoked from every template,
-  and it often contains your application menu, sidebar,
-  or similar.
-
-  ## Examples
-
-      <Layouts.app flash={@flash}>
-        <h1>Content</h1>
-      </Layouts.app>
-
+  Page layout for non-monitor pages: navbar plus a centred column.
   """
   attr :flash, :map, required: true, doc: "the map of flash messages"
-
-  attr :current_scope, :map,
-    default: nil,
-    doc: "the current [scope](https://phoenix.hexdocs.pm/scopes.html)"
-
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
-        </a>
-      </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-          <li>
-            <a href="https://phoenix.hexdocs.pm/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
-          </li>
-        </ul>
-      </div>
-    </header>
+    <.trading_navbar />
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
+    <main class="px-4 py-8 sm:px-6 lg:px-8">
+      <div class="mx-auto max-w-6xl">
         {render_slot(@inner_block)}
       </div>
     </main>
 
     <.flash_group flash={@flash} />
+    """
+  end
+
+  @doc """
+  Full-viewport layout for dense, live-updating monitor screens (DESIGN.md).
+  """
+  attr :flash, :map, required: true, doc: "the map of flash messages"
+  slot :inner_block, required: true
+
+  def trading_live(assigns) do
+    ~H"""
+    <.trading_navbar />
+
+    <div class="min-h-screen bg-base-100">
+      <main class="pb-6 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-7xl mx-auto">
+          {render_slot(@inner_block)}
+        </div>
+      </main>
+    </div>
+
+    <.flash_group flash={@flash} />
+    """
+  end
+
+  @doc """
+  The only navbar: square mark plus `Trading://Micro` wordmark.
+  """
+  def trading_navbar(assigns) do
+    ~H"""
+    <header class="navbar bg-base-300 border-b border-primary/20 px-4 sm:px-6 lg:px-8 min-h-14 h-14">
+      <div class="navbar-start">
+        <a href="/" class="flex items-center gap-2 px-2">
+          <span class="w-2 h-2 bg-primary shrink-0"></span>
+          <span class="text-lg font-bold uppercase tracking-[0.08em] text-base-content">
+            Trading<span class="text-primary">://</span>Micro
+          </span>
+        </a>
+      </div>
+
+      <div class="navbar-end">
+        <ul class="menu menu-horizontal px-1 gap-1 font-data text-xs uppercase tracking-wider">
+          <li>
+            <a
+              href="/"
+              class="rounded-none border border-transparent hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+            >
+              <.icon name="hero-signal" class="h-4 w-4 mr-1" /> Recorder
+            </a>
+          </li>
+          <li>
+            <a
+              href="/health"
+              class="rounded-none border border-transparent hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+            >
+              <.icon name="hero-heart" class="h-4 w-4 mr-1" /> Health
+            </a>
+          </li>
+          <li>
+            <a href="/status" class="rounded-none opacity-50 hover:opacity-100">
+              <.icon name="hero-cog-6-tooth" class="h-4 w-4 mr-1" /> Status
+            </a>
+          </li>
+        </ul>
+      </div>
+    </header>
     """
   end
 
@@ -117,43 +142,6 @@ defmodule TradingMicroWeb.Layouts do
         {gettext("Attempting to reconnect")}
         <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
       </.flash>
-    </div>
-    """
-  end
-
-  @doc """
-  Provides dark vs light theme toggle based on themes defined in app.css.
-
-  See <head> in root.html.heex which applies the theme before page load.
-  """
-  def theme_toggle(assigns) do
-    ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 [[data-theme-source=system]_&]:!left-0 transition-[left]" />
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="system"
-      >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="light"
-      >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="dark"
-      >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
     </div>
     """
   end
