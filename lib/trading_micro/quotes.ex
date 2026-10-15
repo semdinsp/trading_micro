@@ -124,6 +124,38 @@ defmodule TradingMicro.Quotes do
   end
 
   @doc """
+  `symbol`'s RTH seconds on ET `date` as plain floats, oldest first, for
+  research (`TradingMicro.SignatureStudy`). Each is
+  `%{t: unix_seconds, mid: float | nil, ofi: float, net_volume: float}`:
+  `ofi` is 0.0 when the row's is `nil`, and `net_volume` is buy minus sell
+  volume. Seconds without a mid are kept, so cumulative flow includes
+  trade-only seconds. `[]` on a non-trading day.
+  """
+  @spec rth_series(String.t(), Date.t()) :: [map()]
+  def rth_series(symbol, %Date{} = date) do
+    case Session.day(date) do
+      %{rth: nil} ->
+        []
+
+      %{rth: {open, close}} ->
+        from(q in SecondQuote,
+          where: q.symbol == ^symbol and q.ts >= ^open and q.ts < ^close,
+          order_by: q.ts,
+          select: {q.ts, q.mid, q.ofi, q.buy_volume, q.sell_volume}
+        )
+        |> Repo.all()
+        |> Enum.map(fn {ts, mid, ofi, buy, sell} ->
+          %{
+            t: DateTime.to_unix(ts),
+            mid: mid && to_float(mid),
+            ofi: if(ofi, do: to_float(ofi), else: 0.0),
+            net_volume: to_float(buy) - to_float(sell)
+          }
+        end)
+    end
+  end
+
+  @doc """
   Longest run of seconds in `[open, close)` with no entry in `quoted`
   (sorted). Returns `{seconds, start}`; `{0, nil}` when every second has one.
   """

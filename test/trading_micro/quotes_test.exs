@@ -60,6 +60,32 @@ defmodule TradingMicro.QuotesTest do
     assert b.ts == DateTime.add(@open, 3)
   end
 
+  describe "rth_series/2" do
+    test "RTH rows only, oldest first, as floats with nil OFI as 0" do
+      Quotes.insert_rows([
+        row("SPY", ~U[2026-10-13 13:29:59Z], %{rth: false}),
+        row("SPY", DateTime.add(@open, 1), %{
+          ofi: nil,
+          mid: nil,
+          buy_volume: d(0),
+          sell_volume: d(30)
+        }),
+        row("SPY", @open),
+        row("SPY", ~U[2026-10-13 20:00:00Z], %{rth: false}),
+        row("QQQ", @open)
+      ])
+
+      assert [first, second] = Quotes.rth_series("SPY", ~D[2026-10-13])
+
+      assert first == %{t: DateTime.to_unix(@open), mid: 100.01, ofi: 200.0, net_volume: 100.0}
+      assert second == %{t: DateTime.to_unix(@open) + 1, mid: nil, ofi: 0.0, net_volume: -30.0}
+    end
+
+    test "a holiday has no series" do
+      assert Quotes.rth_series("SPY", ~D[2026-11-26]) == []
+    end
+  end
+
   describe "largest_gap/3" do
     test "finds the longest run with no quoted second, edges included" do
       open = ~U[2026-10-13 13:30:00Z]
