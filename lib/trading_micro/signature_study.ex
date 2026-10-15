@@ -381,7 +381,7 @@ defmodule TradingMicro.SignatureStudy do
     ρ: Spearman of the Lévy area with the forward mid return (bps) over 10s/60s/300s.
     p: placebo p of ρ, two-sided: the area rotated in time within each day.
     D10-D1: top-decile minus bottom-decile mean 60s return, in bps; it has to
-    beat about one spread (SPY ~0.13, QQQ ~0.27 bps median) to pay.
+    beat about one spread (`mix micro.report` gives each median) to pay.
     ρ|A|,|r60|: whether the area's size carries volatility, not direction.
     The leader is the first name: a positive area means it moved first.
     """

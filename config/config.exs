@@ -12,8 +12,11 @@ config :trading_micro,
   generators: [timestamp_type: :utc_datetime, binary_id: true]
 
 # What the recorder records. Adding a symbol is this one line — the
-# recorder subscribes it on trading_hub's Polygon feed at boot.
-config :trading_micro, :symbols, ["SPY", "QQQ"]
+# recorder subscribes it on trading_hub's Polygon feed at boot. IWM and
+# XLE (added 2026-10-15) are controls for the SPY/QQQ signature study: a
+# second broad index and a thinner sector name, so an effect seen only in
+# QQQ can be told apart from a fluke.
+config :trading_micro, :symbols, ["SPY", "QQQ", "IWM", "XLE"]
 
 # The recorder: per-second aggregation flushed in batches.
 #   flush_interval_ms — how often closed seconds are written.
