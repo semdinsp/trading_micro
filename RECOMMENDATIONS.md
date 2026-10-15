@@ -1,8 +1,8 @@
 # Findings and recommendations
 
-*From trading_micro's first recorded session (2026-10-14) and the 24 sessions of history in `trading_backtest.second_quotes` (SPY and QQQ, 2026-09-08 to 2026-10-09).*
+*From trading_micro's recorded sessions (2026-10-14 onward) and the 24 sessions of history in `trading_backtest.second_quotes` (SPY and QQQ, 2026-09-08 to 2026-10-09).*
 
-**Summary:** SPY and QQQ seconds show **no direction edge after costs**, but they do forecast **how big the next move will be**. Testing that on the strategies already running pointed to one gate: **no new entries before 10:00 ET**. It is now being paper A/B tested in `trading_system`. Don't build anything from it in `trading_live` until that test passes.
+**Summary:** SPY and QQQ seconds show **no direction edge after costs**, including path-signature (Lévy area) features and in both calm and normal volatility, but they do forecast **how big the next move will be**. Testing that on the strategies already running pointed to one gate: **no new entries before 10:00 ET**. It is now being paper A/B tested in `trading_system`. Don't build anything from it in `trading_live` until that test passes.
 
 ## 1. Recorder: works and should keep running
 
@@ -34,8 +34,34 @@ Every check was measured against the bid/ask cost (an average SPY spread of abou
 | SPY↔QQQ lead-lag at 1 s | corr 0.03–0.04, far below the spread |
 | QQQ/SPY 5 s divergence closes | about 0.03 bps, against about 0.5 bps to trade both legs |
 | **20 m Donchian breakout + 1 m OFI filter** (`trading_backtest` PR #58) | Doesn't beat a shuffled-OFI placebo after costs for either symbol. The baseline breakout loses money, and the best cells rest on 22–44 trades carried by one day |
+| **Path signatures (Lévy area)** of OFI→mid, net volume→mid and QQQ→SPY over 30 s / 1 m / 5 m (`mix micro.signature`) | Nothing over 26 sessions. The one live hit didn't hold up in history (below) |
 
 **Recommendation:** don't build a strategy from these signals' direction alone in `trading_live` or `trading_system`. The only thing worth a second look is QQQ with OFI above 1σ and a 30 m hold (+1.62 bps, p = 0.03, n = 161), and only after a longer backfill.
+
+### Path signatures: a two-day hit that didn't replicate
+
+The Lévy area of two series over a window measures which one moved first. For example, when OFI moves and then the mid follows, the area is positive. `mix micro.signature` samples it every 10 s and scores it against the 10 s / 1 m / 5 m forward return. It uses a time-rotation placebo, because overlapping samples make a plain shuffle look far more significant than it is.
+
+| QQQ OFI→mid, 5 m window | ρ vs next 1 m | Placebo p | Top − bottom decile, 1 m |
+|---|---|---|---|
+| Live, 2026-10-14 and 10-15 | 0.097 | 0.005 | +1.41 bps |
+| History, 24 sessions 2026-09-08 to 10-09 | −0.009 | 0.33 | −0.26 bps |
+
+- **The live result was most likely chance.** Two days had 5 of 36 cells at p < 0.05, against about 2 expected. In history, every one of the 18 cells has |ρ| ≤ 0.024. The history's OFI was checked against the live data and matches: 52% vs 54% of QQQ seconds positive, similar magnitudes.
+- **trading_signal has three research rows** (`massive_qqq_ofi_mid_levy_300s` / `_60s`, `massive_spy_ofi_mid_levy_300s`, live since 2026-10-16, notes say "do not trade"). They are cheap to keep as a live record; retire them if nothing shows up in about two weeks.
+- **The recorder now also records IWM and XLE** (PR #10, from 2026-10-15 evening), as controls: a second broad index and a thinner sector name.
+
+**Recommendation:** don't build on the Lévy-area features. Keep running `mix micro.signature` on the live data over time; treat any new hit as needing the 24-session history to agree before it goes to `trading_backtest`.
+
+### Split by market regime: no difference
+
+`trading_signal`'s `regime_sessions` labels each session by VIX band and SPY trend. The 26 sessions split 13 calm / 13 normal vol, and 11 up / 11 down / 4 chop trend. The market moved from calm to normal on 2026-10-14, so both live days fall in normal vol. That raised the question of whether the effect only appears in normal-vol markets.
+
+- **It doesn't.** Across all 13 normal-vol sessions, QQQ OFI→mid 5 m has ρ 0.005 (p 0.76). Calm-vol sessions and the up / down / chop splits show nothing either.
+- **The only small regularity:** in normal vol, QQQ net volume→mid predicts the next 5 m with ρ ≈ 0.03 (p 0.005–0.015). Its decile gap is 0.1–0.33 bps, about one QQQ spread, so it can't pay. It's one of about 90 cells tested, so it's likely chance.
+- **Regime transitions:** `trading_signal` now stores every intraday label change (`regime_transitions`, from 2026-10-15). That allows a by-regime split within a day once some history builds up.
+
+The split was a one-off read-only script over `trading_backtest.second_quotes`, `live_second_quotes` and `trading_signal`'s `regime_sessions`, reusing `TradingMicro.SignatureStudy`.
 
 ## 3. Volatility: strong forecasts, but not a useful gate
 
@@ -81,11 +107,13 @@ The paper strategies lost money overall over the sample: **−8.7M net** across 
 
 | Item | Status |
 |---|---|
-| trading_micro recorder | Running on port 4020; PRs #1–#8 merged |
+| trading_micro recorder | Running on port 4020, recording SPY, QQQ, IWM and XLE; PRs #1–#10 merged |
+| Path-signature study | `mix micro.signature [FROM] [TO]`; nothing over 26 sessions |
+| `trading_signal` Lévy-area research rows | Live from 2026-10-16, do not trade; review around 2026-10-30 |
 | `trading_backtest` Donchian + OFI study | PR #58, merged; `mix trading_backtest.donchian_ofi` |
 | `trading_backtest` volatility-gate study | PR #59, merged; `mix trading_backtest.vol_gate` |
 | `trading_system` 10:00 ET A/B test | Running since 2026-10-14 (PR #460, 87 pairs); review around 2026-10-28 / 2026-11-11 |
 | `trading_hub` port registration | PR #150, merged |
 | Re-check on the recorder's own data | After 4–6 weeks of `live_second_quotes` |
 
-**Caveat:** all of the history is 24 sessions from September–October 2026, so a single market regime.
+**Caveat:** the history is 24 sessions from September–October 2026. By `trading_signal`'s labels it covers both calm and normal volatility, but no high-volatility (stressed) session.
