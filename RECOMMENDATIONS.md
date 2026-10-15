@@ -74,7 +74,7 @@ The paper strategies lost money overall over the sample: **−8.7M net** across 
 
 | Item | Status |
 |---|---|
-| trading_micro recorder | Running on port 4020; PRs #1–#6 merged |
+| trading_micro recorder | Running on port 4020; PRs #1–#7 merged |
 | `trading_backtest` Donchian + OFI study | PR #58, merged; `mix trading_backtest.donchian_ofi` |
 | `trading_backtest` volatility-gate study | PR #59, merged; `mix trading_backtest.vol_gate` |
 | `trading_system` 10:00 ET A/B test | Prompt sent 2026-10-14 |
