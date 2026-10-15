@@ -9,6 +9,9 @@ The table has the same shape as `trading_backtest`'s historical
 `second_quotes`, so live and historical seconds compare directly. The
 columns are documented in `TradingMicro.Quotes.SecondQuote`.
 
+Research findings so far, and what to build or not build from them, are in
+[RECOMMENDATIONS.md](RECOMMENDATIONS.md).
+
 ## Run
 
 ```bash
