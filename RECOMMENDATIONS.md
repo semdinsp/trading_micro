@@ -58,13 +58,20 @@ This is from the same study (PR #59):
 - **P&L:** skipping adds +2.82M paper P&L, against +1.80M for a random skip of the same 20.6% of trades. Half size adds +1.41M.
 - **Live data doesn't confirm it yet:** 1,483 live trades give ΔR +0.032, p = 0.31.
 
-**Recommendation, in progress:** run a paper A/B test in `trading_system`.
+**Recommendation, running since 2026-10-14:** a paper A/B test in `trading_system` (PR #460). The prompt is in `handoff_prompts/2026-10-14-trading_system-open30-ab-test.md`.
 
-1. Rank the top strategies and randomly fork 50% of them with `entry_delay_minutes: 30`, an existing setting that needs no new code.
-2. Compare each fork with its unchanged parent.
-3. Run for 10–20 sessions.
-
-The prompt is in `handoff_prompts/2026-10-14-trading_system-open30-ab-test.md` and was sent to `trading-system-71`. If the paired result holds, the gated versions reach `trading_live` through the normal promotion, which needs no `trading_live` code.
+- **Strategies tested:** 173 discovery and quarantine versions with at least 30 closed trades, positive expectancy R, a close in the last 8 days, and not paused. They were split with seed `20261014`, balanced across signal family × direction (16 groups).
+- **Treatment (87):** `entry_delay_minutes: 30`, an existing setting, so no new code.
+  - 24 discovery versions were forked, and each is compared with its unchanged parent.
+  - 63 quarantine versions were each copied twice into discovery (delay 30 vs unchanged), so both arms share a stage and sizing.
+  - That makes 150 new versions, all created with no errors.
+- **Secondary control:** the 86 unforked versions.
+- **Tags:** `ab:open30 2026-10-14`, plus `ab-open30-treatment` / `-control` / `-unforked` / `-source`.
+- **Report:** `cd trading_system && mix trading_system.ab_open30 [--pairs] [--since DATE]`. It runs daily in `CLAUDEDAILY.md`'s market-close routine and shows the paired ΔR (sign test and bootstrap), each arm's stats, the before/after 10:00 split and a permutation test against the unforked half.
+- **When to read it:** first data after the 2026-10-15 session. Don't decide before 10 sessions (about 2026-10-28); 20 sessions (about 2026-11-11) is better.
+- **Reading it:**
+  - **Controls keep their own delay:** most are 3 minutes, some 15. In a 15-minute pair the only difference is entries from 09:45 to 10:00, so split the result by the control's delay rather than letting those pairs dilute it.
+  - **If the paired result holds on paper,** the gated versions reach `trading_live` through the normal promotion, which needs no `trading_live` code. Live data hasn't confirmed the effect yet, so promotion is the user's call.
 
 ## 5. Something outside this research to look at
 
@@ -74,10 +81,10 @@ The paper strategies lost money overall over the sample: **−8.7M net** across 
 
 | Item | Status |
 |---|---|
-| trading_micro recorder | Running on port 4020; PRs #1–#7 merged |
+| trading_micro recorder | Running on port 4020; PRs #1–#8 merged |
 | `trading_backtest` Donchian + OFI study | PR #58, merged; `mix trading_backtest.donchian_ofi` |
 | `trading_backtest` volatility-gate study | PR #59, merged; `mix trading_backtest.vol_gate` |
-| `trading_system` 10:00 ET A/B test | Prompt sent 2026-10-14 |
+| `trading_system` 10:00 ET A/B test | Running since 2026-10-14 (PR #460, 87 pairs); review around 2026-10-28 / 2026-11-11 |
 | `trading_hub` port registration | PR #150, merged |
 | Re-check on the recorder's own data | After 4–6 weeks of `live_second_quotes` |
 
