@@ -8,7 +8,7 @@ defmodule TradingMicroWeb.HealthControllerTest do
     # The recorder is disabled in test.
     assert body["status"] == "disabled"
     assert body["hub_connected"] == false
-    assert Map.keys(body["symbols"]) |> Enum.sort() == ["QQQ", "SPY"]
+    assert Map.keys(body["symbols"]) |> Enum.sort() == Enum.sort(TradingMicro.Recorder.symbols())
     assert body["symbols"]["SPY"]["rows_last_minute"] == 0
   end
 

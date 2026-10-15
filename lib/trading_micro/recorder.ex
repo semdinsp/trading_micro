@@ -1,7 +1,7 @@
 defmodule TradingMicro.Recorder do
   @moduledoc """
-  Phase 1 of trading_micro: records SPY/QQQ top of book and trade flow
-  from trading_hub's Polygon feed into `live_second_quotes`, one row per
+  Phase 1 of trading_micro: records the configured symbols' top of book
+  and trade flow from trading_hub's Polygon feed into `live_second_quotes`, one row per
   symbol per second. No prediction, no orders, nothing published back
   onto `TradingHub.PubSub`.
 

@@ -1,6 +1,6 @@
 # trading_micro
 
-Records SPY/QQQ top of book and trade flow from `trading_hub`'s Polygon
+Records SPY, QQQ, IWM and XLE top of book and trade flow from `trading_hub`'s Polygon
 feed into Postgres, one row per symbol per UTC second
 (`trading_micro_dev.live_second_quotes`). Phase 1 only records: no
 prediction, no orders, and nothing is broadcast onto `TradingHub.PubSub`.
