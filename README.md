@@ -23,6 +23,7 @@ elixir --name trading_micro@Scotts-Mac-mini.local -S mix phx.server
 - `GET /health`: always 200; `status` is `ok`, `degraded` or `disabled`, with per-symbol rows in the last minute, last message age, gap flag and hub subscription state.
 - `GET /status`, `/status/metrics`: app_status, with the same recorder metrics as flat gauges.
 - `mix micro.report [YYYY-MM-DD]`: the end-of-session report (rows, RTH quote coverage, median spread in bps, largest RTH gap). It is read-only and safe to run next to the server.
+- `mix micro.signature [FROM] [TO]`: research. It scores the Lévy area (`TradingCore.Signals.Signature`) of cumulative OFI and net volume against mid, and of QQQ against SPY, over 30s/60s/300s windows, against 10s/60s/300s forward returns, with a time-rotation placebo. It is read-only; run it after the close.
 
 **Inspecting the running node:** use a one-shot RPC, read-only.
 
