@@ -223,6 +223,34 @@ defmodule TradingMicro.SignatureStudyTest do
     end
   end
 
+  describe "round_trip_cost/3" do
+    test "spread plus buy and sell commission, with the bar at two round trips" do
+      c = SignatureStudy.round_trip_cost(0.26, 768.0)
+
+      assert c.shares == 130
+      assert c.spread_bps == 0.26
+
+      buy = TradingCore.CostModel.order_commission(Decimal.new(130), Decimal.new("768.0"), "buy")
+
+      sell =
+        TradingCore.CostModel.order_commission(Decimal.new(130), Decimal.new("768.0"), "sell")
+
+      expected = Decimal.to_float(Decimal.add(buy, sell)) / (130 * 768.0) * 10_000
+
+      assert_in_delta c.commission_bps, expected, 1.0e-9
+      assert_in_delta c.round_trip_bps, 0.26 + expected, 1.0e-9
+      assert_in_delta c.bar_bps, 2 * c.round_trip_bps, 1.0e-12
+    end
+
+    test "a small order pays the minimum, so costs more in bps" do
+      big = SignatureStudy.round_trip_cost(0.3, 70.0)
+      small = SignatureStudy.round_trip_cost(0.3, 70.0, 1_000)
+
+      assert small.shares == 14
+      assert small.commission_bps > big.commission_bps
+    end
+  end
+
   describe "format/3" do
     test "prints a table per target and handles missing numbers" do
       results =
@@ -234,6 +262,26 @@ defmodule TradingMicro.SignatureStudyTest do
       assert out =~ "SPY\nfeature"
       assert out =~ "ofi→mid     60s    20"
       assert out =~ "n/a"
+    end
+
+    test "with costs, prints the cost line and marks a D10-D1 over the bar" do
+      # D10-D1 is 1.8 bps (see "a feature that orders the forward return").
+      results =
+        SignatureStudy.evaluate(for(i <- 1..200, do: sample(@day, i * 1.0, i * 0.01)),
+          shuffles: 0
+        )
+
+      cheap = %{"SPY" => SignatureStudy.round_trip_cost(0.2, 700.0)}
+      dear = %{"SPY" => SignatureStudy.round_trip_cost(1.0, 700.0)}
+
+      out = SignatureStudy.format(results, @day, @day, cheap)
+
+      assert out =~
+               ~r/round trip 0\.\d\d bps \(spread 0\.20 \+ commission 0\.\d\d, 142 sh at \$700\.00\)/
+
+      assert out =~ "1.80*"
+
+      refute SignatureStudy.format(results, @day, @day, dear) =~ "1.80*"
     end
 
     test "says so when there is nothing" do
