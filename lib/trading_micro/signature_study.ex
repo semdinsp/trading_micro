@@ -30,8 +30,7 @@ defmodule TradingMicro.SignatureStudy do
       overlap, so a plain shuffle would make ρ look far more significant
       than it is;
     * the mean 60s forward return of the top decile minus the bottom decile,
-      in bps. Compare it with the spread: it has to beat about one spread
-      to pay;
+      in bps. It has to clear the cost bar (`round_trip_cost/3`) to pay;
     * Spearman of |area| with |60s return|, which shows whether the area
       carries volatility rather than direction information.
 
@@ -350,13 +349,58 @@ defmodule TradingMicro.SignatureStudy do
     end
   end
 
+  ## Costs
+
+  @doc """
+  What a taker round trip costs in bps of `price`, for an order of about
+  `notional` dollars (default 100,000): the full `spread_bps` (half in,
+  half out) plus `TradingCore.CostModel.order_commission/4` for the buy
+  and the sell, which includes IBKR's regulatory fees.
+
+  `bar` is twice that. D10-D1 is the top decile's mean return minus the
+  bottom decile's. Long the top decile and short the bottom, each trade
+  earns about half of it and pays a full round trip, so D10-D1 has to be
+  over two round trips to pay. Impact and missed fills are ignored.
+  """
+  @spec round_trip_cost(number(), number(), number()) :: map()
+  def round_trip_cost(spread_bps, price, notional \\ 100_000) do
+    qty = max(floor(notional / price), 1)
+    value = qty * price
+    price_d = Decimal.from_float(price * 1.0)
+    qty_d = Decimal.new(qty)
+
+    commission =
+      ["buy", "sell"]
+      |> Enum.map(&TradingCore.CostModel.order_commission(qty_d, price_d, &1))
+      |> Enum.reduce(&Decimal.add/2)
+      |> Decimal.to_float()
+
+    commission_bps = commission / value * 10_000
+    round_trip = spread_bps + commission_bps
+
+    %{
+      price: price * 1.0,
+      shares: qty,
+      spread_bps: spread_bps * 1.0,
+      commission_bps: commission_bps,
+      round_trip_bps: round_trip,
+      bar_bps: 2 * round_trip
+    }
+  end
+
   ## Output
 
-  @doc "The report printed by `mix micro.signature`."
-  @spec format([map()], Date.t(), Date.t()) :: String.t()
-  def format([], from, to), do: "No RTH samples for #{range(from, to)}."
+  @doc """
+  The report printed by `mix micro.signature`. `costs` maps a target to
+  its `round_trip_cost/3`; a target with one gets a cost line, and its
+  D10-D1 is marked `*` when it clears the bar.
+  """
+  @spec format([map()], Date.t(), Date.t(), %{String.t() => map()}) :: String.t()
+  def format(results, from, to, costs \\ %{})
 
-  def format(results, from, to) do
+  def format([], from, to, _costs), do: "No RTH samples for #{range(from, to)}."
+
+  def format(results, from, to, costs) do
     days = results |> Enum.map(& &1.days) |> Enum.max()
 
     header =
@@ -370,7 +414,11 @@ defmodule TradingMicro.SignatureStudy do
       |> Enum.group_by(& &1.target)
       |> Enum.sort()
       |> Enum.map_join("\n", fn {target, rows} ->
-        "#{target}\n" <> header <> "\n" <> Enum.map_join(rows, "\n", &row/1)
+        cost = costs[target]
+
+        "#{target}\n" <>
+          cost_line(cost) <>
+          header <> "\n" <> Enum.map_join(rows, "\n", &row(&1, cost))
       end)
 
     """
@@ -380,14 +428,28 @@ defmodule TradingMicro.SignatureStudy do
 
     ρ: Spearman of the Lévy area with the forward mid return (bps) over 10s/60s/300s.
     p: placebo p of ρ, two-sided: the area rotated in time within each day.
-    D10-D1: top-decile minus bottom-decile mean 60s return, in bps; it has to
-    beat about one spread (`mix micro.report` gives each median) to pay.
+    D10-D1: top-decile minus bottom-decile mean 60s return, in bps, before costs.
+    It pays only above the bar, two taker round trips (spread + commission and
+    fees); * marks one that clears it.
     ρ|A|,|r60|: whether the area's size carries volatility, not direction.
     The leader is the first name: a positive area means it moved first.
     """
   end
 
-  defp row(r) do
+  defp cost_line(nil), do: ""
+
+  defp cost_line(c) do
+    "round trip #{fmt(c.round_trip_bps)} bps (spread #{fmt(c.spread_bps)} + " <>
+      "commission #{fmt(c.commission_bps)}, #{c.shares} sh at $#{fmt(c.price)}) · " <>
+      "D10-D1 bar #{fmt(c.bar_bps)} bps\n"
+  end
+
+  defp fmt(x), do: :erlang.float_to_binary(x * 1.0, decimals: 2)
+
+  defp clears(%{decile_spread_60: d}, %{bar_bps: bar}) when is_number(d) and d > bar, do: "*"
+  defp clears(_r, _cost), do: " "
+
+  defp row(r, cost) do
     String.pad_trailing(r.feature, 10) <>
       String.pad_leading("#{r.window}s", 5) <>
       String.pad_leading(Integer.to_string(r.n), 6) <>
@@ -395,7 +457,8 @@ defmodule TradingMicro.SignatureStudy do
       num(r.p[60], 7, 3) <>
       num(r.p[300], 7, 3) <>
       num(r.decile_spread_60, 13, 2) <>
-      num(r.rho_abs_60, 12, 3)
+      clears(r, cost) <>
+      num(r.rho_abs_60, 11, 3)
   end
 
   defp pad_h(h), do: String.pad_trailing(Integer.to_string(h), 3)

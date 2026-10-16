@@ -53,12 +53,25 @@ The Lévy area of two series over a window measures which one moved first. For e
 
 **Recommendation:** don't build on the Lévy-area features. Keep running `mix micro.signature` on the live data over time; treat any new hit as needing the 24-session history to agree before it goes to `trading_backtest`.
 
+### What a signature result has to clear
+
+`mix micro.signature` prints each symbol's cost per round trip and the bar its top-minus-bottom decile gap (D10−D1) must clear. It marks any result that clears it with `*`. A taker round trip pays the full spread, plus `TradingCore.CostModel.order_commission/4` on the buy and the sell, which includes IBKR's regulatory fees. Long the top decile and short the bottom, each trade earns about half of D10−D1, so the bar is two round trips. With a $100k order and 2026-10-14..16 prices and spreads:
+
+| | Spread | Commission + fees | Round trip | D10−D1 bar |
+|---|---|---|---|---|
+| SPY | 0.26 bps | 0.41 bps | 0.67 bps | 1.34 bps |
+| QQQ | 0.28 | 0.41 | 0.69 | 1.37 |
+| IWM | 0.37 | 0.58 | 0.95 | 1.90 |
+| XLE (2026-10-16) | 1.48 | 1.71 | 3.19 | 6.38 |
+
+Market impact and missed fills are not included. Before PR #12 the report said "beat about one spread", which was too lenient: the two-day QQQ result's 1.41 bps only just clears its 1.37 bps bar.
+
 ### Split by market regime: no difference
 
 `trading_signal`'s `regime_sessions` labels each session by VIX band and SPY trend. The 26 sessions split 13 calm / 13 normal vol, and 11 up / 11 down / 4 chop trend. The market moved from calm to normal on 2026-10-14, so both live days fall in normal vol. That raised the question of whether the effect only appears in normal-vol markets.
 
 - **It doesn't.** Across all 13 normal-vol sessions, QQQ OFI→mid 5 m has ρ 0.005 (p 0.76). Calm-vol sessions and the up / down / chop splits show nothing either.
-- **The only small regularity:** in normal vol, QQQ net volume→mid predicts the next 5 m with ρ ≈ 0.03 (p 0.005–0.015). Its decile gap is 0.1–0.33 bps, about one QQQ spread, so it can't pay. It's one of about 90 cells tested, so it's likely chance.
+- **The only small regularity:** in normal vol, QQQ net volume→mid predicts the next 5 m with ρ ≈ 0.03 (p 0.005–0.015). Its decile gap is 0.1–0.33 bps, far below QQQ's cost bar of about 1.37 bps (see below), so it can't pay. It's one of about 90 cells tested, so it's likely chance.
 - **Regime transitions:** `trading_signal` now stores every intraday label change (`regime_transitions`, from 2026-10-15). That allows a by-regime split within a day once some history builds up.
 
 The split was a one-off read-only script over `trading_backtest.second_quotes`, `live_second_quotes` and `trading_signal`'s `regime_sessions`, reusing `TradingMicro.SignatureStudy`.
