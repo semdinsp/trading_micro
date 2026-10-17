@@ -112,6 +112,39 @@ defmodule TradingMicro.Open30StudyTest do
     end
   end
 
+  test "evaluate/3 and format/2 run end to end on synthetic sessions" do
+    :rand.seed(:exsss, {4, 5, 6})
+
+    sessions =
+      for date <- Date.range(~D[2026-03-02], ~D[2026-06-30]),
+          %{rth: {open, close}} <- [Session.day(date)],
+          DateTime.diff(close, open, :minute) == 390 do
+        ms = DateTime.to_unix(open, :millisecond)
+        walk = Enum.scan(1..390, 100.0, fn _, p -> p * (1 + 0.001 * :rand.normal()) end)
+        price = fn i -> Enum.at(walk, max(i, 0)) end
+
+        index = %{
+          "SPY" => bars(ms, price),
+          "QQQ" => bars(ms, price),
+          "VIX" => bars(ms, &(20.0 + &1 * 0.001))
+        }
+
+        {:ok, s} = Open30Study.session(date, open, close, index)
+        s
+      end
+
+    regimes = Map.new(sessions, &{&1.date, %{vol: "normal", trend: "up"}})
+    result = Open30Study.evaluate(sessions, regimes)
+
+    assert result.sessions == length(sessions)
+    assert length(result.cells) == 16
+    assert Enum.all?(result.cells, &is_number(&1.wf.lift))
+
+    report = Open30Study.format(result)
+    assert report =~ "Main cells: 16"
+    refute report =~ ~r/\bedge\b/i
+  end
+
   test "rotate/2 shifts circularly" do
     assert Open30Study.rotate([1, 2, 3, 4, 5], 2) == [3, 4, 5, 1, 2]
     assert Open30Study.rotate([1, 2, 3], 4) == [2, 3, 1]
