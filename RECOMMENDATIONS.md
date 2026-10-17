@@ -76,6 +76,23 @@ Market impact and missed fills are not included. Before PR #12 the report said "
 
 The split was a one-off read-only script over `trading_backtest.second_quotes`, `live_second_quotes` and `trading_signal`'s `regime_sessions`, reusing `TradingMicro.SignatureStudy`.
 
+### Opening 30 minutes vs the rest of the day: one VIX lead-lag lead, not yet robust
+
+`mix micro.open30` computes Lévy areas over 09:30–10:00 ET from Polygon 1-minute bars (2024-01-02 to 2026-10-16: 695 full sessions, 6 half days dropped, 674 with VIX). It asks whether they predict `log(P_close / P_10:00)` (rest of day) or `log(P_close / P_15:30)` (last 30 m) beyond the opening return `r30`. The test is a logistic regression `up ~ r30 + area`, fit on the first 70% of sessions, with AUC measured on the last 30%. The placebo shifts the area series circularly by 5–50 sessions. NYSE TICK isn't on Polygon, so the (SPY, TICK) pair wasn't run.
+
+| Area over 09:30–10:00 | Result |
+|---|---|
+| A1 (time, log price) | Nothing: \|ρ\| ≤ 0.07, no out-of-sample AUC lift |
+| A2 (QQQ, SPY) | Nothing: \|ρ\| ≤ 0.02, lift negative |
+| A3 (log price, cumulative volume) | Nothing: \|ρ\| ≤ 0.07, lift not distinguishable from placebo |
+| **A4 (SPY, VIX), vs last 30 m** | ρ −0.14 (SPY and QQQ), placebo p 0.021 (the smallest possible). Out-of-sample AUC lift +0.036 SPY (p 0.043), +0.079 QQQ (p 0.021). Top − bottom decile −8.7 / −11.7 bps |
+
+- **Multiple testing:** 16 main cells, about 0.8 chance hits per test. Observed: 2 for ρ and 2 for AUC lift, all A4 vs last 30 m. The SPY and QQQ targets move together, so that's closer to one finding than two. Of the regime cells, 64 had a p, with about 3.2 expected by chance; 7 hit, 6 of them the same A4 last-30-m result in calm, normal and up-trend sessions (regime taken from the previous session's `regime_sessions` label).
+- **Not robust to the split:** with training shares of 0.5 / 0.6 / 0.7 / 0.8, A4's last-30-m lift stays positive (+0.04 to +0.08), but its placebo p moves between 0.02 and 0.17. The cells that pass change with the split. `r30` alone has an out-of-sample AUC of only 0.46–0.55.
+- **Sign:** the area is negative-associated. When SPY leads VIX in the opening half hour (as the area measures it), the last 30 minutes tend to fall.
+
+**Recommendation:** don't build anything from it yet; no strategy or signal definition was created. The next check, before any `trading_backtest` handoff, is whether A4 adds anything beyond the opening VIX change (ΔVIX 09:30–10:00) and `r30` together, and whether it holds on 2022–2023 bars. A1–A3 can be dropped.
+
 ## 3. Volatility: strong forecasts, but not a useful gate
 
 - **The size of the next move is predictable.** A burst of quote activity (top 5% of the last 60 s) doubles the next 5 m move: SPY 7.9 vs 3.5 bps, QQQ 10.0 vs 5.0. The 09:30–10:00 period moves about twice as much as early afternoon.
@@ -122,6 +139,7 @@ The paper strategies lost money overall over the sample: **−8.7M net** across 
 |---|---|
 | trading_micro recorder | Running on port 4020, recording SPY, QQQ, IWM and XLE; PRs #1–#10 merged |
 | Path-signature study | `mix micro.signature [FROM] [TO]`; nothing over 26 sessions |
+| Opening-30-minute Lévy-area study | `mix micro.open30 [FROM TO] [--train 0.7]`; only A4 (SPY, VIX) vs the last 30 m shows anything, not robust to the split |
 | `trading_signal` Lévy-area research rows | Live from 2026-10-16, do not trade; review around 2026-10-30 |
 | `trading_backtest` Donchian + OFI study | PR #58, merged; `mix trading_backtest.donchian_ofi` |
 | `trading_backtest` volatility-gate study | PR #59, merged; `mix trading_backtest.vol_gate` |
