@@ -289,4 +289,16 @@ defmodule TradingMicro.SignatureStudyTest do
                "No RTH samples for 2026-10-15 to 2026-10-18."
     end
   end
+
+  describe "time_bucket/2" do
+    test "places a second by its minutes after the open" do
+      %{rth: {open, _}} = TradingMicro.Session.day(~D[2026-10-15])
+      at = fn minutes -> DateTime.to_unix(open) + minutes * 60 end
+
+      assert SignatureStudy.time_bucket(~D[2026-10-15], at.(0)) == {0, "09:30-10:00"}
+      assert SignatureStudy.time_bucket(~D[2026-10-15], at.(30)) == {30, "10:00-11:30"}
+      assert SignatureStudy.time_bucket(~D[2026-10-15], at.(269)) == {120, "11:30-14:00"}
+      assert SignatureStudy.time_bucket(~D[2026-10-15], at.(389)) == {360, "15:30-16:00"}
+    end
+  end
 end

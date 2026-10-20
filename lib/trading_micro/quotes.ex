@@ -12,6 +12,7 @@ defmodule TradingMicro.Quotes do
 
   # Postgres caps a statement at 65_535 parameters; a row has 15 columns.
   @chunk 2_000
+  @table "live_second_quotes"
 
   @doc """
   Inserts closed-second rows. A row for an existing `(symbol, ts)` replaces
@@ -65,27 +66,34 @@ defmodule TradingMicro.Quotes do
     * `median_spread_bps` — over RTH seconds with a usable quote;
     * `largest_rth_gap_s` and `largest_rth_gap_at` — the longest run of RTH
       seconds without a quote, including the open and close edges.
+
+  `table` is `"live_second_quotes"` by default; research can pass
+  `"second_quotes"`, trading_backtest's history with the same columns.
   """
-  @spec session_report(Date.t(), [String.t()]) :: [map()]
-  def session_report(%Date{} = date, symbols) do
+  @spec session_report(Date.t(), [String.t()], String.t()) :: [map()]
+  def session_report(%Date{} = date, symbols, table \\ @table) do
     day = Session.day(date)
-    Enum.map(symbols, &symbol_report(&1, day))
+    Enum.map(symbols, &symbol_report(&1, day, table))
   end
 
-  defp symbol_report(symbol, %{window: nil} = day) do
+  defp symbol_report(symbol, %{window: nil} = day, _table) do
     %{symbol: symbol, date: day.date, trading_day: false}
   end
 
-  defp symbol_report(symbol, %{window: {w_open, w_close}, rth: {open, close}} = day) do
+  defp symbol_report(symbol, %{window: {w_open, w_close}, rth: {open, close}} = day, table) do
     rows =
       Repo.aggregate(
-        from(q in SecondQuote,
+        from(q in {table, SecondQuote},
           where: q.symbol == ^symbol and q.ts >= ^w_open and q.ts < ^w_close
         ),
         :count
       )
 
-    rth = from(q in SecondQuote, where: q.symbol == ^symbol and q.ts >= ^open and q.ts < ^close)
+    rth =
+      from(q in {table, SecondQuote},
+        where: q.symbol == ^symbol and q.ts >= ^open and q.ts < ^close
+      )
+
     rth_rows = Repo.aggregate(rth, :count)
 
     quoted_ts =
@@ -129,16 +137,17 @@ defmodule TradingMicro.Quotes do
   `%{t: unix_seconds, mid: float | nil, ofi: float, net_volume: float}`:
   `ofi` is 0.0 when the row's is `nil`, and `net_volume` is buy minus sell
   volume. Seconds without a mid are kept, so cumulative flow includes
-  trade-only seconds. `[]` on a non-trading day.
+  trade-only seconds. `[]` on a non-trading day. `table` as in
+  `session_report/3`.
   """
-  @spec rth_series(String.t(), Date.t()) :: [map()]
-  def rth_series(symbol, %Date{} = date) do
+  @spec rth_series(String.t(), Date.t(), String.t()) :: [map()]
+  def rth_series(symbol, %Date{} = date, table \\ @table) do
     case Session.day(date) do
       %{rth: nil} ->
         []
 
       %{rth: {open, close}} ->
-        from(q in SecondQuote,
+        from(q in {table, SecondQuote},
           where: q.symbol == ^symbol and q.ts >= ^open and q.ts < ^close,
           order_by: q.ts,
           select: {q.ts, q.mid, q.ofi, q.buy_volume, q.sell_volume}
