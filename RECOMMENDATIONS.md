@@ -93,6 +93,17 @@ The split was a one-off read-only script over `trading_backtest.second_quotes`, 
 
 **Recommendation:** don't build anything from it yet; no strategy or signal definition was created. The next check, before any `trading_backtest` handoff, is whether A4 adds anything beyond the opening VIX change (ΔVIX 09:30–10:00) and `r30` together, and whether it holds on 2022–2023 bars. A1–A3 can be dropped.
 
+### By time of day, and as a breakout filter: nothing that replicates
+
+`mix micro.signature --by-time` splits the Lévy-area study into 09:30–10:00, 10:00–11:30, 11:30–14:00, 14:00–15:30 and 15:30–16:00 ET. `--source history` runs it, and `mix micro.breakout`, on the 24-session history.
+
+- **By time of day, history (SPY, QQQ):** 10 of 180 cells at p < 0.05 against 9 expected, all |ρ| ≤ 0.07, none clearing the cost bar.
+- **By time of day, live (4 sessions, IWM and XLE 2):** 13 of 300 against 15 expected. Nine small cells (590–2,160 samples) clear the bar, mostly QQQ net volume→mid in 15:30–16:00 and QQQ OFI→mid 300 s in 10:00–11:30. The same QQQ cells in history have ρ ≤ 0.03 and decile gaps of −0.65 to +0.27 bps.
+- **Donchian 20 m breakout confirmed by the area** (`mix micro.breakout`, rules as in `trading_backtest` PR #58, held 5 / 15 / 30 m): on the history, every filter (OFI→mid area agreeing, disagreeing or strongly agreeing over 30 s / 60 s / 300 s, and 1 m OFI agreeing) loses after one round trip, and 0 of 60 cells beat the within-day placebo at p < 0.05 (3 expected). Breakouts lose before costs (−0.05 to −0.71 bps).
+- **The one live lead is IWM:** breakouts with the 300 s area agreeing made +3.5 bps at 5 m and +5.9 at 30 m (n = 27, p 0.01), against −0.5 and −3.6 when it disagreed. That's two sessions, 5 of 120 live cells hit against 6 expected, QQQ shows the opposite sign, and IWM has no history to check against.
+
+**Recommendation:** nothing to build. Re-run `mix micro.breakout` on IWM once there are about 20 recorded sessions (around mid-November); drop it if the 300 s confirmation doesn't hold.
+
 ## 3. Volatility: strong forecasts, but not a useful gate
 
 - **The size of the next move is predictable.** A burst of quote activity (top 5% of the last 60 s) doubles the next 5 m move: SPY 7.9 vs 3.5 bps, QQQ 10.0 vs 5.0. The 09:30–10:00 period moves about twice as much as early afternoon.
@@ -139,6 +150,7 @@ The paper strategies lost money overall over the sample: **−8.7M net** across 
 |---|---|
 | trading_micro recorder | Running on port 4020, recording SPY, QQQ, IWM and XLE; PRs #1–#10 merged |
 | Path-signature study | `mix micro.signature [FROM] [TO]`; nothing over 26 sessions |
+| Time-of-day split and breakout filter | `mix micro.signature --by-time [--source history]`, `mix micro.breakout`; nothing replicates, IWM 300 s confirmation to re-check at about 20 sessions |
 | Opening-30-minute Lévy-area study | `mix micro.open30 [FROM TO] [--train 0.7]`; only A4 (SPY, VIX) vs the last 30 m shows anything, not robust to the split |
 | `trading_signal` Lévy-area research rows | Live from 2026-10-16, do not trade; review around 2026-10-30 |
 | `trading_backtest` Donchian + OFI study | PR #58, merged; `mix trading_backtest.donchian_ofi` |

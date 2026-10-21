@@ -58,6 +58,29 @@ defmodule TradingMicro.SignatureStudy do
   @doc "The forward-return horizons, in seconds."
   def horizons, do: @horizons
 
+  # {minutes after the open where the bucket starts, label}.
+  @time_buckets [
+    {0, "09:30-10:00"},
+    {30, "10:00-11:30"},
+    {120, "11:30-14:00"},
+    {270, "14:00-15:30"},
+    {360, "15:30-16:00"}
+  ]
+
+  @doc "Times of day that `time_bucket/2` splits a session into."
+  def time_buckets, do: @time_buckets
+
+  @doc """
+  The `time_buckets/0` entry holding unix second `t` on ET `date`, as
+  `{start_minute, label}`. On a half day the later buckets are just empty.
+  """
+  @spec time_bucket(Date.t(), integer()) :: {non_neg_integer(), String.t()}
+  def time_bucket(date, t) do
+    %{rth: {open, _close}} = TradingMicro.Session.day(date)
+    minute = div(t - DateTime.to_unix(open), 60)
+    @time_buckets |> Enum.filter(fn {start, _} -> minute >= start end) |> List.last()
+  end
+
   @doc """
   Samples for one ET day. `series` maps each symbol to its
   `TradingMicro.Quotes.rth_series/2` list. Each sample is
@@ -386,6 +409,40 @@ defmodule TradingMicro.SignatureStudy do
       round_trip_bps: round_trip,
       bar_bps: 2 * round_trip
     }
+  end
+
+  @doc """
+  `%{symbol => round_trip_cost/3}` over ET dates `from..to`: each symbol's
+  median RTH spread (the median of the days' medians, as `mix micro.report`
+  gives them) and its mean mid from `mids` (`%{symbol => [mid]}`). A
+  symbol with no spread or no mid is left out. `table` as in
+  `TradingMicro.Quotes.session_report/3`.
+  """
+  @spec costs([String.t()], Date.t(), Date.t(), map(), number(), String.t()) :: map()
+  def costs(symbols, from, to, mids, notional, table \\ "live_second_quotes") do
+    spreads =
+      Date.range(from, to)
+      |> Enum.flat_map(&TradingMicro.Quotes.session_report(&1, symbols, table))
+      |> Enum.filter(&(Map.get(&1, :median_spread_bps) != nil))
+      |> Enum.group_by(& &1.symbol, & &1.median_spread_bps)
+
+    for symbol <- symbols,
+        [_ | _] = days <- [Map.get(spreads, symbol, [])],
+        [_ | _] = prices <- [Map.get(mids, symbol, [])],
+        into: %{} do
+      price = Enum.sum(prices) / length(prices)
+      {symbol, round_trip_cost(median(days), price, notional)}
+    end
+  end
+
+  defp median(xs) do
+    sorted = Enum.sort(xs)
+    n = length(sorted)
+    mid = div(n, 2)
+
+    if rem(n, 2) == 1,
+      do: Enum.at(sorted, mid),
+      else: (Enum.at(sorted, mid - 1) + Enum.at(sorted, mid)) / 2
   end
 
   ## Output
