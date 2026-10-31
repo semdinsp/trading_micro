@@ -30,6 +30,7 @@ defmodule TradingMicro.Recorder.WorkerTest do
           auto_flush?: false,
           clock: fn -> Agent.get(clock, & &1) end,
           settle_ms: 2_000,
+          gap_warn_seconds: 15,
           gap_alarm_seconds: 60
         ],
         opts
@@ -132,13 +133,50 @@ defmodule TradingMicro.Recorder.WorkerTest do
     log = capture_log(fn -> assert Worker.flush(pid).gap_open? end)
     assert log =~ "NO QUOTES for 61s during RTH"
 
-    set_clock(clock, DateTime.add(@t0, 70))
+    set_clock(clock, DateTime.add(@t0, 75))
     assert capture_log(fn -> Worker.flush(pid) end) == ""
 
     broadcast(hub_quote("TST", DateTime.add(@t0, 75), "100.00", "100.02"))
+    # Sync point: received at 75s, before the clock moves.
+    Worker.stats(pid)
     set_clock(clock, DateTime.add(@t0, 76))
     log = capture_log(fn -> refute Worker.flush(pid).gap_open? end)
-    assert log =~ "quotes resumed"
+    assert log =~ "quotes resumed after a 75s gap; 0 late messages dropped"
+  end
+
+  test "logs a gap shorter than the alarm only when it closes", %{clock: clock} do
+    pid = start_worker(clock)
+
+    set_clock(clock, DateTime.add(@t0, 20))
+    assert capture_log(fn -> refute Worker.flush(pid).gap_open? end) == ""
+
+    set_clock(clock, DateTime.add(@t0, 29))
+    broadcast(hub_quote("TST", DateTime.add(@t0, 29), "100.00", "100.02"))
+    Worker.stats(pid)
+    set_clock(clock, DateTime.add(@t0, 30))
+    log = capture_log(fn -> Worker.flush(pid) end)
+    assert log =~ "quotes resumed after a 29s gap"
+    refute log =~ "NO QUOTES"
+  end
+
+  test "a gap's closing log counts the backlog that arrived late", %{clock: clock} do
+    pid = start_worker(clock)
+    broadcast(hub_quote("TST", DateTime.add(@t0, 1), "100.00", "100.02"))
+    Worker.stats(pid)
+
+    set_clock(clock, DateTime.add(@t0, 20))
+    Worker.flush(pid)
+
+    # The stall clears: three quotes stamped for closed seconds, then a live one.
+    set_clock(clock, DateTime.add(@t0, 25))
+
+    for s <- [5, 6, 7, 24] do
+      broadcast(hub_quote("TST", DateTime.add(@t0, s), "100.00", "100.02"))
+    end
+
+    Worker.stats(pid)
+    log = capture_log(fn -> Worker.flush(pid) end)
+    assert log =~ "quotes resumed after a 25s gap; 3 late messages dropped"
   end
 
   test "stats/1 by symbol is nil when no worker runs" do

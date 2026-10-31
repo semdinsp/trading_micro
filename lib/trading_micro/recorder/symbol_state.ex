@@ -24,10 +24,22 @@ defmodule TradingMicro.Recorder.SymbolState do
 
   ## Gaps
 
-  `check_gap/3` tracks silence: no quote received for `threshold_s`
-  seconds during regular hours opens a gap, and the next quote closes it.
-  It reports the transition once each way so the caller can log loudly
-  without repeating itself every flush.
+  `check_gap/4` tracks silence in two tiers. No quote recorded for
+  `warn_s` seconds during regular hours opens a gap quietly; still silent
+  past `alarm_s`, the gap is alarmed, which is what `gap_open?/1` reports.
+  The first recorded quote after it opened closes it, and its length runs
+  to that quote. Both thresholds apply only during regular hours. Each
+  transition is reported once so the caller can log without repeating
+  itself every flush. Gaps are only seen at a check, so a silence just
+  over `warn_s` can fall between two checks and go unreported.
+
+  A closing gap carries how many messages were late-dropped while it was
+  open, counted from the last recorded quote. That tells delayed data from
+  missing data: a feed that stalls and
+  then delivers its backlog stamps it for seconds already closed, so the
+  count is large; data that was never sent leaves it near zero. It does
+  not say where upstream the delay was. It is counted up to the flush that
+  sees quotes resume, so a backlog still arriving after that is missed.
   """
 
   alias TradingMicro.Microstructure
@@ -54,6 +66,10 @@ defmodule TradingMicro.Recorder.SymbolState do
     :last_message_at,
     :watch_since,
     :gap_since,
+    :gap_resumed_at,
+    gap_alarmed?: false,
+    gap_late_base: 0,
+    late_dropped_at_last_quote: 0,
     buckets: %{},
     days: %{},
     late_dropped: 0,
@@ -93,7 +109,7 @@ defmodule TradingMicro.Recorder.SymbolState do
         last_message_at: received_at
     }
 
-    with_bucket(state, ts, fn state -> %{state | last_quote_at: received_at} end, fn bucket ->
+    with_bucket(state, ts, &recorded_quote(&1, received_at), fn bucket ->
       %{
         bucket
         | bid: quote.bid,
@@ -107,6 +123,15 @@ defmodule TradingMicro.Recorder.SymbolState do
   end
 
   def apply_quote(state, _data, _received_at), do: state
+
+  defp recorded_quote(state, received_at) do
+    %{
+      state
+      | last_quote_at: received_at,
+        late_dropped_at_last_quote: state.late_dropped,
+        gap_resumed_at: state.gap_resumed_at || (state.gap_since && received_at)
+    }
+  end
 
   @doc """
   Folds one trade (`data` from a hub `:ws_trade` message). Prints whose
@@ -199,30 +224,48 @@ defmodule TradingMicro.Recorder.SymbolState do
 
   @doc """
   Updates gap tracking at `now`. Returns `{event, state}` where `event` is
-  `{:gap_opened, silent_seconds}`, `{:gap_closed, gap_seconds}` or `:none`.
+  one of:
+
+    * `{:gap_opened, silent_seconds}`: silent past `warn_s`, under `alarm_s`
+    * `{:gap_alarmed, silent_seconds}`: silent past `alarm_s`
+    * `{:gap_closed, gap_seconds, late_dropped}`: quotes resumed;
+      `late_dropped` counts messages late-dropped since the gap opened
+    * `:none`
   """
-  @spec check_gap(t(), DateTime.t(), pos_integer()) ::
-          {{:gap_opened, number()} | {:gap_closed, number()} | :none, t()}
-  def check_gap(state, %DateTime{} = now, threshold_s) do
+  @spec check_gap(t(), DateTime.t(), number(), number()) ::
+          {{:gap_opened, number()}
+           | {:gap_alarmed, number()}
+           | {:gap_closed, number(), non_neg_integer()}
+           | :none, t()}
+  def check_gap(state, %DateTime{} = now, warn_s, alarm_s) do
     reference = state.last_quote_at || state.watch_since
     silent = DateTime.diff(now, reference, :millisecond) / 1000
 
     cond do
       state.gap_since && reference && DateTime.compare(reference, state.gap_since) == :gt ->
-        {{:gap_closed, DateTime.diff(reference, state.gap_since, :millisecond) / 1000},
-         %{state | gap_since: nil}}
+        {{:gap_closed, DateTime.diff(state.gap_resumed_at, state.gap_since, :millisecond) / 1000,
+          state.late_dropped - state.gap_late_base},
+         %{state | gap_since: nil, gap_resumed_at: nil, gap_alarmed?: false}}
 
-      is_nil(state.gap_since) and silent > threshold_s and Session.rth_now?(now) ->
-        {{:gap_opened, silent}, %{state | gap_since: reference}}
+      is_nil(state.gap_since) and silent > warn_s and Session.rth_now?(now) ->
+        state = %{state | gap_since: reference, gap_late_base: state.late_dropped_at_last_quote}
+
+        if silent > alarm_s,
+          do: {{:gap_alarmed, silent}, %{state | gap_alarmed?: true}},
+          else: {{:gap_opened, silent}, state}
+
+      not is_nil(state.gap_since) and not state.gap_alarmed? and silent > alarm_s and
+          Session.rth_now?(now) ->
+        {{:gap_alarmed, silent}, %{state | gap_alarmed?: true}}
 
       true ->
         {:none, state}
     end
   end
 
-  @doc "Whether a gap is currently open."
+  @doc "Whether an alarmed gap (silent past `alarm_s`) is currently open."
   @spec gap_open?(t()) :: boolean()
-  def gap_open?(state), do: not is_nil(state.gap_since)
+  def gap_open?(state), do: state.gap_alarmed?
 
   # The reference value when it is recent enough to difference against.
   defp fresh(_value, nil, _ts), do: nil

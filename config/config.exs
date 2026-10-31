@@ -23,11 +23,15 @@ config :trading_micro, :symbols, ["SPY", "QQQ", "IWM", "XLE"]
 #   settle_ms — how long after a second ends before it is closed, so a
 #     late-arriving message (Polygon stamps by SIP time, delivery is
 #     cross-node and unordered across topics) still lands in its second.
-#   gap_alarm_seconds — RTH silence that gets logged at error level.
+#   gap_warn_seconds — RTH silence that counts as a gap, logged as a
+#     warning when it closes.
+#   gap_alarm_seconds — RTH silence that gets logged at error level and
+#     marks the recorder unhealthy.
 config :trading_micro, TradingMicro.Recorder,
   enabled: true,
   flush_interval_ms: 5_000,
   settle_ms: 2_000,
+  gap_warn_seconds: 15,
   gap_alarm_seconds: 60
 
 # Shared /status and /status/metrics endpoints (app_status).

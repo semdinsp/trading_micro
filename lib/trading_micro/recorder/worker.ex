@@ -17,8 +17,10 @@ defmodule TradingMicro.Recorder.Worker do
   A failed insert keeps its rows and retries them on the next flush,
   capped at `@max_pending` rows (about 17 minutes of one busy symbol) so a
   long database outage cannot grow memory without bound; overflow is
-  dropped oldest first and logged. A gap in RTH quotes is logged at error
-  level when it opens and again when it closes.
+  dropped oldest first and logged. A gap in RTH quotes past
+  `gap_alarm_seconds` is logged at error level; every gap past
+  `gap_warn_seconds` is logged as a warning when it closes, with the count
+  of late messages that tells delayed data from missing data.
 
   On shutdown every open second is written, settled or not, including the
   current one.
@@ -90,6 +92,7 @@ defmodule TradingMicro.Recorder.Worker do
       clock: clock,
       flush_interval_ms: opt(opts, config, :flush_interval_ms, 5_000),
       settle_ms: opt(opts, config, :settle_ms, 2_000),
+      gap_warn_seconds: opt(opts, config, :gap_warn_seconds, 15),
       gap_alarm_seconds: opt(opts, config, :gap_alarm_seconds, 60),
       auto_flush?: Keyword.get(opts, :auto_flush?, true),
       fold: SymbolState.new(symbol, clock.()),
@@ -203,8 +206,13 @@ defmodule TradingMicro.Recorder.Worker do
   end
 
   defp check_gap(state, now) do
-    case SymbolState.check_gap(state.fold, now, state.gap_alarm_seconds) do
-      {{:gap_opened, silent}, fold} ->
+    case SymbolState.check_gap(
+           state.fold,
+           now,
+           state.gap_warn_seconds,
+           state.gap_alarm_seconds
+         ) do
+      {{:gap_alarmed, silent}, fold} ->
         Logger.error(
           "Recorder #{state.symbol}: NO QUOTES for #{round(silent)}s during RTH. " <>
             "Data is not being recorded. Check trading_hub's Polygon feed and " <>
@@ -213,8 +221,17 @@ defmodule TradingMicro.Recorder.Worker do
 
         %{state | fold: fold}
 
-      {{:gap_closed, gap}, fold} ->
-        Logger.warning("Recorder #{state.symbol}: quotes resumed after a #{round(gap)}s gap")
+      {{:gap_closed, gap, late}, fold} ->
+        Logger.warning(
+          "Recorder #{state.symbol}: quotes resumed after a #{round(gap)}s gap; " <>
+            "#{late} late messages dropped meanwhile " <>
+            "(many: the feed stalled and delivered its backlog late; " <>
+            "near zero: the data never arrived)"
+        )
+
+        %{state | fold: fold}
+
+      {{:gap_opened, _silent}, fold} ->
         %{state | fold: fold}
 
       {:none, fold} ->
