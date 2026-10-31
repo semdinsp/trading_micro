@@ -159,6 +159,26 @@ defmodule TradingMicro.Recorder.WorkerTest do
     refute log =~ "NO QUOTES"
   end
 
+  test "a gap's closing log counts the backlog that arrived late", %{clock: clock} do
+    pid = start_worker(clock)
+    broadcast(hub_quote("TST", DateTime.add(@t0, 1), "100.00", "100.02"))
+    Worker.stats(pid)
+
+    set_clock(clock, DateTime.add(@t0, 20))
+    Worker.flush(pid)
+
+    # The stall clears: three quotes stamped for closed seconds, then a live one.
+    set_clock(clock, DateTime.add(@t0, 25))
+
+    for s <- [5, 6, 7, 24] do
+      broadcast(hub_quote("TST", DateTime.add(@t0, s), "100.00", "100.02"))
+    end
+
+    Worker.stats(pid)
+    log = capture_log(fn -> Worker.flush(pid) end)
+    assert log =~ "quotes resumed after a 25s gap; 3 late messages dropped"
+  end
+
   test "stats/1 by symbol is nil when no worker runs" do
     assert Worker.stats("NOPE") == nil
   end

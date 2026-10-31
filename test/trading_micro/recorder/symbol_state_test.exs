@@ -308,12 +308,13 @@ defmodule TradingMicro.Recorder.SymbolStateTest do
 
     test "a closing gap counts the backlog that arrived late" do
       state = fold([{:q, quote(0, "1", 1, "2", 1)}])
-      # Late drops before the gap are not the gap's.
+      # A late drop followed by a recorded quote is not the gap's.
       {_rows, state} = SymbolState.close(state, at(5_000), 0)
       state = SymbolState.apply_quote(state, quote(1_000, "1", 1, "2", 1), at(5_000))
+      state = SymbolState.apply_quote(state, quote(6_000, "1", 1, "2", 1), at(6_000))
       assert state.late_dropped == 1
 
-      assert {{:gap_opened, _}, state} = SymbolState.check_gap(state, at(20_000), 15, 60)
+      assert {{:gap_opened, _}, state} = SymbolState.check_gap(state, at(22_000), 15, 60)
       {_rows, state} = SymbolState.close(state, at(29_000), 0)
 
       # The stall clears: its backlog is stamped for closed seconds, then
@@ -326,6 +327,40 @@ defmodule TradingMicro.Recorder.SymbolStateTest do
       state = SymbolState.apply_quote(state, quote(29_200, "1", 1, "2", 1), at(29_200))
 
       assert {{:gap_closed, _gap, 18}, _} = SymbolState.check_gap(state, at(30_000), 15, 60)
+    end
+
+    test "a gap runs to the first quote after it, not the last before the check" do
+      state = fold([{:q, quote(0, "1", 1, "2", 1)}])
+      assert {{:gap_opened, _}, state} = SymbolState.check_gap(state, at(20_000), 15, 60)
+
+      state =
+        fold([{:q, quote(25_000, "1", 1, "2", 1)}, {:q, quote(29_000, "1", 1, "2", 1)}], state)
+
+      assert {{:gap_closed, gap, 0}, _} = SymbolState.check_gap(state, at(30_000), 15, 60)
+      assert gap == 25.0
+    end
+
+    test "quotes that all arrive late do not close the gap" do
+      state = fold([{:q, quote(0, "1", 1, "2", 1)}])
+      assert {{:gap_opened, _}, state} = SymbolState.check_gap(state, at(20_000), 15, 60)
+      {_rows, state} = SymbolState.close(state, at(25_000), 0)
+
+      state = SymbolState.apply_quote(state, quote(10_000, "1", 1, "2", 1), at(25_000))
+
+      assert {:none, state} = SymbolState.check_gap(state, at(26_000), 15, 60)
+      assert state.gap_since
+    end
+
+    test "a gap that opens just before the close does not alarm after it" do
+      # 15:59:30 ET; RTH ends at 16:00.
+      late = ~U[2026-10-13 19:59:30Z]
+      state = SymbolState.new("SPY", late)
+
+      assert {{:gap_opened, _}, state} =
+               SymbolState.check_gap(state, DateTime.add(late, 20), 15, 60)
+
+      assert {:none, state} = SymbolState.check_gap(state, DateTime.add(late, 70), 15, 60)
+      refute SymbolState.gap_open?(state)
     end
 
     test "silence outside RTH is not a gap" do

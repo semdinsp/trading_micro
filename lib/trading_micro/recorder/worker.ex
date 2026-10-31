@@ -20,7 +20,7 @@ defmodule TradingMicro.Recorder.Worker do
   dropped oldest first and logged. A gap in RTH quotes past
   `gap_alarm_seconds` is logged at error level; every gap past
   `gap_warn_seconds` is logged as a warning when it closes, with the count
-  of late messages that says where the feed stalled.
+  of late messages that tells delayed data from missing data.
 
   On shutdown every open second is written, settled or not, including the
   current one.
@@ -225,13 +225,16 @@ defmodule TradingMicro.Recorder.Worker do
         Logger.warning(
           "Recorder #{state.symbol}: quotes resumed after a #{round(gap)}s gap; " <>
             "#{late} late messages dropped meanwhile " <>
-            "(many: a backlog delivered late, the stall was between Polygon and here; " <>
-            "near zero: Polygon itself went quiet)"
+            "(many: the feed stalled and delivered its backlog late; " <>
+            "near zero: the data never arrived)"
         )
 
         %{state | fold: fold}
 
-      {_opened_or_none, fold} ->
+      {{:gap_opened, _silent}, fold} ->
+        %{state | fold: fold}
+
+      {:none, fold} ->
         %{state | fold: fold}
     end
   end

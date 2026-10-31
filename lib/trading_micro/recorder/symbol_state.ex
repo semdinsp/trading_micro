@@ -27,14 +27,19 @@ defmodule TradingMicro.Recorder.SymbolState do
   `check_gap/4` tracks silence in two tiers. No quote recorded for
   `warn_s` seconds during regular hours opens a gap quietly; still silent
   past `alarm_s`, the gap is alarmed, which is what `gap_open?/1` reports.
-  The next recorded quote closes it. Each transition is reported once so
-  the caller can log without repeating itself every flush.
+  The first recorded quote after it opened closes it, and its length runs
+  to that quote. Both thresholds apply only during regular hours. Each
+  transition is reported once so the caller can log without repeating
+  itself every flush. Gaps are only seen at a check, so a silence just
+  over `warn_s` can fall between two checks and go unreported.
 
   A closing gap carries how many messages were late-dropped while it was
-  open. That tells the two kinds of outage apart: a stall between Polygon
-  and here delivers its backlog when it clears, stamped for seconds
-  already closed, so the count is large; Polygon itself going quiet
-  delivers nothing, so it is near zero.
+  open, counted from the last recorded quote. That tells delayed data from
+  missing data: a feed that stalls and
+  then delivers its backlog stamps it for seconds already closed, so the
+  count is large; data that was never sent leaves it near zero. It does
+  not say where upstream the delay was. It is counted up to the flush that
+  sees quotes resume, so a backlog still arriving after that is missed.
   """
 
   alias TradingMicro.Microstructure
@@ -61,8 +66,10 @@ defmodule TradingMicro.Recorder.SymbolState do
     :last_message_at,
     :watch_since,
     :gap_since,
+    :gap_resumed_at,
     gap_alarmed?: false,
     gap_late_base: 0,
+    late_dropped_at_last_quote: 0,
     buckets: %{},
     days: %{},
     late_dropped: 0,
@@ -102,7 +109,7 @@ defmodule TradingMicro.Recorder.SymbolState do
         last_message_at: received_at
     }
 
-    with_bucket(state, ts, fn state -> %{state | last_quote_at: received_at} end, fn bucket ->
+    with_bucket(state, ts, &recorded_quote(&1, received_at), fn bucket ->
       %{
         bucket
         | bid: quote.bid,
@@ -116,6 +123,15 @@ defmodule TradingMicro.Recorder.SymbolState do
   end
 
   def apply_quote(state, _data, _received_at), do: state
+
+  defp recorded_quote(state, received_at) do
+    %{
+      state
+      | last_quote_at: received_at,
+        late_dropped_at_last_quote: state.late_dropped,
+        gap_resumed_at: state.gap_resumed_at || (state.gap_since && received_at)
+    }
+  end
 
   @doc """
   Folds one trade (`data` from a hub `:ws_trade` message). Prints whose
@@ -227,18 +243,19 @@ defmodule TradingMicro.Recorder.SymbolState do
 
     cond do
       state.gap_since && reference && DateTime.compare(reference, state.gap_since) == :gt ->
-        {{:gap_closed, DateTime.diff(reference, state.gap_since, :millisecond) / 1000,
+        {{:gap_closed, DateTime.diff(state.gap_resumed_at, state.gap_since, :millisecond) / 1000,
           state.late_dropped - state.gap_late_base},
-         %{state | gap_since: nil, gap_alarmed?: false}}
+         %{state | gap_since: nil, gap_resumed_at: nil, gap_alarmed?: false}}
 
       is_nil(state.gap_since) and silent > warn_s and Session.rth_now?(now) ->
-        state = %{state | gap_since: reference, gap_late_base: state.late_dropped}
+        state = %{state | gap_since: reference, gap_late_base: state.late_dropped_at_last_quote}
 
         if silent > alarm_s,
           do: {{:gap_alarmed, silent}, %{state | gap_alarmed?: true}},
           else: {{:gap_opened, silent}, state}
 
-      not is_nil(state.gap_since) and not state.gap_alarmed? and silent > alarm_s ->
+      not is_nil(state.gap_since) and not state.gap_alarmed? and silent > alarm_s and
+          Session.rth_now?(now) ->
         {{:gap_alarmed, silent}, %{state | gap_alarmed?: true}}
 
       true ->
