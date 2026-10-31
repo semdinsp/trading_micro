@@ -104,6 +104,24 @@ defmodule TradingMicro.Recorder.WorkerTest do
     assert Worker.flush(pid).rows_written == 1
   end
 
+  test "a quote delayed past a flush lands in its second within settle_ms", %{clock: clock} do
+    pid = start_worker(clock, "TST", settle_ms: 10_000)
+
+    set_clock(clock, DateTime.add(@t0, 5))
+    Worker.flush(pid)
+
+    # Stamped 0.5s, delivered 8s later.
+    set_clock(clock, DateTime.add(@t0, 8))
+    broadcast(hub_quote("TST", DateTime.add(@t0, 500, :millisecond), "100.00", "100.02"))
+
+    set_clock(clock, DateTime.add(@t0, 12))
+    stats = Worker.flush(pid)
+    assert stats.late_dropped == 0
+    assert stats.rows_written == 1
+    assert [%{ts: ts}] = Repo.all(SecondQuote)
+    assert ts == @t0
+  end
+
   test "publishes stats on TradingMicro.PubSub after each flush", %{clock: clock} do
     Phoenix.PubSub.subscribe(TradingMicro.PubSub, Worker.stats_topic())
     pid = start_worker(clock)
