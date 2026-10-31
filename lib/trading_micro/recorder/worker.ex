@@ -91,7 +91,7 @@ defmodule TradingMicro.Recorder.Worker do
       symbol: symbol,
       clock: clock,
       flush_interval_ms: opt(opts, config, :flush_interval_ms, 5_000),
-      settle_ms: opt(opts, config, :settle_ms, 2_000),
+      settle_ms: opt(opts, config, :settle_ms, 10_000),
       gap_warn_seconds: opt(opts, config, :gap_warn_seconds, 15),
       gap_alarm_seconds: opt(opts, config, :gap_alarm_seconds, 60),
       auto_flush?: Keyword.get(opts, :auto_flush?, true),

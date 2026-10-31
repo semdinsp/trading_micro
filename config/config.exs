@@ -23,6 +23,11 @@ config :trading_micro, :symbols, ["SPY", "QQQ", "IWM", "XLE"]
 #   settle_ms — how long after a second ends before it is closed, so a
 #     late-arriving message (Polygon stamps by SIP time, delivery is
 #     cross-node and unordered across topics) still lands in its second.
+#     Bursts (the open, minute boundaries, news) delay delivery by several
+#     seconds; at 2s these blacked out every symbol for 10-20s a few times
+#     a day and lost ~2% of SPY's RTH volume on 2026-10-30. Rows land
+#     settle_ms + flush_interval_ms after their second, still well inside
+#     Health's one-minute window.
 #   gap_warn_seconds — RTH silence that counts as a gap, logged as a
 #     warning when it closes.
 #   gap_alarm_seconds — RTH silence that gets logged at error level and
@@ -30,7 +35,7 @@ config :trading_micro, :symbols, ["SPY", "QQQ", "IWM", "XLE"]
 config :trading_micro, TradingMicro.Recorder,
   enabled: true,
   flush_interval_ms: 5_000,
-  settle_ms: 2_000,
+  settle_ms: 10_000,
   gap_warn_seconds: 15,
   gap_alarm_seconds: 60
 
